@@ -18,6 +18,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from io import BytesIO
 import random
+import urllib.request
 import os
 
 # ---------------- SETTINGS ----------------
@@ -118,50 +119,29 @@ def update_route(route_name, car_number, driver, plomb):
             sheet.update_cell(idx, plomb_col, plomb)
             break
 
-# ---------------- PDF GENERATION WITH RUSSIAN FONT ----------------
+# ---------------- PDF GENERATION WITH RUSSIAN SUPPORT ----------------
 
-def register_russian_font():
-    """Регистрирует шрифт для поддержки русского языка"""
-    try:
-        # Пробуем использовать системный шрифт Arial (есть на большинстве систем)
-        # В Debian/Ubuntu шрифты обычно в /usr/share/fonts/
-        font_paths = [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-            "/System/Library/Fonts/Arial.ttf",  # macOS
-            "C:\\Windows\\Fonts\\Arial.ttf",  # Windows
-            "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
-        ]
-        
-        # Пробуем найти шрифт
-        font_found = False
-        
-        for font_path in font_paths:
-            if os.path.exists(font_path):
-                if "Bold" in font_path or "Bold" in font_path.upper():
-                    pdfmetrics.registerFont(TTFont('RussianFont-Bold', font_path))
-                else:
-                    pdfmetrics.registerFont(TTFont('RussianFont', font_path))
-                font_found = True
-                print(f"Шрифт загружен: {font_path}")
-                break
-        
-        if not font_found:
-            # Если шрифт не найден, используем стандартный с кодировкой UTF-8
-            print("Системный шрифт не найден, использую стандартный")
-            return False
-        
-        return True
-        
-    except Exception as e:
-        print(f"Ошибка загрузки шрифта: {e}")
-        return False
+def download_font():
+    """Скачивает бесплатный шрифт DejaVuSans для поддержки русского языка"""
+    font_url = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf"
+    font_path = "/tmp/DejaVuSans.ttf"
+    
+    if not os.path.exists(font_path):
+        try:
+            urllib.request.urlretrieve(font_url, font_path)
+        except:
+            return None
+    return font_path
 
-# Регистрируем шрифт при загрузке
+# Регистрируем русский шрифт
 try:
-    register_russian_font()
-    RUSSIAN_FONT_AVAILABLE = True
+    font_path = download_font()
+    if font_path and os.path.exists(font_path):
+        pdfmetrics.registerFont(TTFont('RussianFont', font_path))
+        pdfmetrics.registerFont(TTFont('RussianFont-Bold', font_path))
+        RUSSIAN_FONT_AVAILABLE = True
+    else:
+        RUSSIAN_FONT_AVAILABLE = False
 except:
     RUSSIAN_FONT_AVAILABLE = False
 
@@ -181,23 +161,20 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
     
     styles = getSampleStyleSheet()
     
-    # Выбираем шрифт для русского языка
-    if RUSSIAN_FONT_AVAILABLE:
-        font_name = 'RussianFont'
-        font_name_bold = 'RussianFont-Bold'
-    else:
-        # Fallback - используем Helvetica с кодировкой UTF-8
-        font_name = 'Helvetica'
-        font_name_bold = 'Helvetica-Bold'
+    # Используем стандартные шрифты reportlab (они работают с кириллицей через Unicode)
+    # Это самый надежный способ
+    font_name = 'Helvetica'
+    font_name_bold = 'Helvetica-Bold'
     
-    # Стили с поддержкой русского языка
+    # Стили
     title_style = ParagraphStyle(
         'MainTitle',
         parent=styles['Normal'],
         fontSize=16,
         alignment=1,
         spaceAfter=15,
-        fontName=font_name_bold
+        fontName=font_name_bold,
+        encoding='utf-8'
     )
     
     header_style = ParagraphStyle(
@@ -206,7 +183,8 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
         fontSize=10,
         alignment=0,
         spaceAfter=6,
-        fontName=font_name
+        fontName=font_name,
+        encoding='utf-8'
     )
     
     bold_style = ParagraphStyle(
@@ -215,7 +193,8 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
         fontSize=10,
         alignment=0,
         spaceAfter=6,
-        fontName=font_name_bold
+        fontName=font_name_bold,
+        encoding='utf-8'
     )
     
     cell_style = ParagraphStyle(
@@ -223,7 +202,8 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
         parent=styles['Normal'],
         fontSize=8,
         alignment=0,
-        fontName=font_name
+        fontName=font_name,
+        encoding='utf-8'
     )
     
     cell_center_style = ParagraphStyle(
@@ -231,7 +211,8 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
         parent=styles['Normal'],
         fontSize=8,
         alignment=1,
-        fontName=font_name
+        fontName=font_name,
+        encoding='utf-8'
     )
     
     elements = []
@@ -244,7 +225,7 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
     total_stores = len(all_routes_df)
     
     # ЗАГОЛОВОК
-    elements.append(Paragraph("МАРШРУТНЫЙ ЛИСТ", title_style))
+    elements.append(Paragraph(u"МАРШРУТНЫЙ ЛИСТ", title_style))
     elements.append(Spacer(1, 5))
     
     # Номер документа
@@ -279,9 +260,9 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
     # ТАБЛИЦА
     # Заголовки таблицы
     table_headers = [
-        "№", "Заказ", "Магазин", "Адрес",
-        "Маршрут", "Пломба", "Коробов выдано",
-        "Коробов получено", "Подпись и печать", "Подпись водителя"
+        u"№", u"Заказ", u"Магазин", u"Адрес",
+        u"Маршрут", u"Пломба", u"Коробов выдано",
+        u"Коробов получено", u"Подпись и печать", u"Подпись водителя"
     ]
     
     table_data = [[Paragraph(h, cell_center_style) for h in table_headers]]
@@ -336,11 +317,11 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
     elements.append(Spacer(1, 20))
     
     # ПОДПИСИ
-    elements.append(Paragraph("Подпись водителя: ___________________________", header_style))
+    elements.append(Paragraph(u"Подпись водителя: ___________________________", header_style))
     elements.append(Spacer(1, 5))
-    elements.append(Paragraph("Подпись принимающей стороны: ___________________________", header_style))
+    elements.append(Paragraph(u"Подпись принимающей стороны: ___________________________", header_style))
     elements.append(Spacer(1, 5))
-    elements.append(Paragraph("Печать: ___________________________", header_style))
+    elements.append(Paragraph(u"Печать: ___________________________", header_style))
     elements.append(Spacer(1, 10))
     elements.append(Paragraph(f"Дата: {datetime.now().strftime('%d.%m.%Y')}", header_style))
     
