@@ -16,7 +16,6 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.units import mm
 from io import BytesIO
-import plotly.express as px
 
 # ---------------- SETTINGS ----------------
 
