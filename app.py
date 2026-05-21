@@ -250,7 +250,7 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
     info5 = Paragraph(f"<b>Пломба:</b> {plomb}", styleInfo)
     elements.append(info5)
     
-    info6 = Paragraph(f"<b>Магазинов:</b> {total_points}", styleInfo)
+    info6 = Paragraph(f"<b>Заказов:</b> {total_points}", styleInfo)
     elements.append(info6)
     
     elements.append(Spacer(1, 6))
