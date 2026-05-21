@@ -5,13 +5,11 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 from io import BytesIO
 import random
+from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.units import mm
-from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.lib import colors
-import urllib.request
 import os
 
 # ---------------- SETTINGS ----------------
@@ -22,28 +20,11 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Применяем пользовательский CSS
 st.markdown("""
     <style>
-    .stMetric {
-        background-color: #f0f2f6;
-        padding: 15px;
-        border-radius: 10px;
-        text-align: center;
-    }
-    .stButton button {
-        background-color: #4CAF50;
-        color: white;
-        font-weight: bold;
-        font-size: 16px;
-        padding: 10px 20px;
-        border-radius: 8px;
-        border: none;
-        width: 100%;
-    }
-    .stButton button:hover {
-        background-color: #45a049;
-    }
+    .stMetric { background-color: #f0f2f6; padding: 15px; border-radius: 10px; text-align: center; }
+    .stButton button { background-color: #4CAF50; color: white; font-weight: bold; font-size: 16px; padding: 10px 20px; border-radius: 8px; width: 100%; }
+    .stButton button:hover { background-color: #45a049; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -53,19 +34,10 @@ SHEET_NAME = "Маршруты"
 # ---------------- GOOGLE SHEETS ----------------
 
 def connect_sheet():
-    scope = [
-        "https://spreadsheets.google.com/feeds",
-        "https://www.googleapis.com/auth/drive"
-    ]
-
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(
-        st.secrets["gcp_service_account"],
-        scope
-    )
-
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
     client = gspread.authorize(creds)
-    sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
-    return sheet
+    return client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
 
 def get_data():
     sheet = connect_sheet()
@@ -88,14 +60,10 @@ def update_route(route_name, car_number, driver, plomb):
     headers = sheet.row_values(1)
     
     extra_columns = ["Номер машины", "Водитель", "№ пломбы"]
-    current_headers = headers.copy()
-    
     for col_name in extra_columns:
-        if col_name not in current_headers:
-            sheet.update_cell(1, len(current_headers) + 1, col_name)
-            current_headers.append(col_name)
-    
-    headers = sheet.row_values(1)
+        if col_name not in headers:
+            sheet.update_cell(1, len(headers) + 1, col_name)
+            headers.append(col_name)
     
     status_col = headers.index("Статус отгрузки") + 1
     fact_col = headers.index("Дата отгрузки факт") + 1
@@ -112,220 +80,160 @@ def update_route(route_name, car_number, driver, plomb):
             sheet.update_cell(idx, plomb_col, plomb)
             break
 
-# ---------------- DOWNLOAD FONT ----------------
-
-def download_font():
-    """Скачивает шрифт DejaVuSans для поддержки русского языка"""
-    font_url = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf"
-    font_path = "/tmp/DejaVuSans.ttf"
-    
-    if not os.path.exists(font_path):
-        try:
-            urllib.request.urlretrieve(font_url, font_path)
-            return font_path
-        except:
-            return None
-    return font_path
-
-# Регистрируем шрифт
-font_path = download_font()
-if font_path and os.path.exists(font_path):
-    try:
-        pdfmetrics.registerFont(TTFont('DejaVu', font_path))
-        RUSSIAN_FONT_AVAILABLE = True
-    except:
-        RUSSIAN_FONT_AVAILABLE = False
-else:
-    RUSSIAN_FONT_AVAILABLE = False
-
 # ---------------- PDF GENERATION ----------------
 
+# Создаем простой PDF без сложных шрифтов, используя стандартные
 def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
-    """Генерирует PDF с поддержкой русского языка"""
     buffer = BytesIO()
     
-    # Создаем PDF в альбомной ориентации
+    # Создаем PDF
     c = canvas.Canvas(buffer, pagesize=landscape(A4))
+    width, height = landscape(A4)  # 297 x 210
     
-    # Случайный номер
-    random_num = random.randint(10000, 99999)
+    # Используем стандартный шрифт Helvetica
+    c.setFont("Helvetica", 10)
     
-    # Общая статистика
-    total_boxes = int(all_routes_df["кол-во штук в заказе"].sum())
-    total_stores = len(all_routes_df)
-    
-    # Настройка шрифта
-    if RUSSIAN_FONT_AVAILABLE:
-        c.setFont('DejaVu', 12)
-    else:
-        c.setFont('Helvetica', 12)
-    
-    # Позиция Y (сверху)
-    y = 200  # landscape A4: 297x210, начинаем сверху
+    y = height - 30
+    x = 20
     
     # Заголовок
-    c.setFont('Helvetica-Bold' if not RUSSIAN_FONT_AVAILABLE else 'DejaVu', 18)
-    c.drawCentredString(150, y, "МАРШРУТНЫЙ ЛИСТ")
+    c.setFont("Helvetica-Bold", 16)
+    c.drawCentredString(width/2, y, "MARSHRUTNIY LIST")
     y -= 15
     
     # Номер
-    c.setFont('Helvetica' if not RUSSIAN_FONT_AVAILABLE else 'DejaVu', 11)
-    c.drawString(20, y, f"№ {random_num}")
+    c.setFont("Helvetica", 10)
+    c.drawString(x, y, f"Nomer: {random.randint(10000, 99999)}")
     y -= 12
     
-    # Информация о рейсе
-    c.drawString(20, y, f"Водитель: {driver}")
+    # Информация
+    c.drawString(x, y, f"Voditel: {driver}")
     y -= 10
-    c.drawString(20, y, f"А/м гос номер: {car}")
+    c.drawString(x, y, f"Avto: {car}")
     y -= 10
-    c.drawString(20, y, f"Дата: {datetime.now().strftime('%d.%m.%Y')}")
+    c.drawString(x, y, f"Data: {datetime.now().strftime('%d.%m.%Y')}")
     y -= 10
-    c.drawString(20, y, f"№ пломбы: {plomb}")
+    c.drawString(x, y, f"Plomba: {plomb}")
     y -= 15
     
-    # Маршруты в рейсе
-    c.setFont('Helvetica-Bold' if not RUSSIAN_FONT_AVAILABLE else 'DejaVu', 10)
-    c.drawString(20, y, "Маршруты в рейсе:")
+    # Маршруты
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(x, y, "Marshruti v reyse:")
     y -= 8
-    
-    c.setFont('Helvetica' if not RUSSIAN_FONT_AVAILABLE else 'DejaVu', 9)
+    c.setFont("Helvetica", 9)
     for route in routes_list:
         route_data = all_routes_df[all_routes_df["Номер маршрута"] == route]
-        text = f"• Маршрут {route} ({len(route_data)} магазинов, {int(route_data['кол-во штук в заказе'].sum())} коробок)"
-        c.drawString(25, y, text)
+        c.drawString(x + 5, y, f"- Marshrut {route} ({len(route_data)} magaz., {int(route_data['кол-во штук в заказе'].sum())} korobok)")
         y -= 8
     y -= 8
     
-    # Строка с коробками
-    c.setFont('Helvetica-Bold' if not RUSSIAN_FONT_AVAILABLE else 'DejaVu', 10)
-    c.drawString(20, y, f"Водитель {driver} получил всего __________ коробов для {total_stores} магазинов")
+    # Коробки
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(x, y, f"Voditel {driver} poluchil vsego __________ korobov dlya {len(all_routes_df)} magazinov")
     y -= 20
     
-    # Заголовки таблицы
-    headers = [
-        "№", "Заказ", "Магазин", "Адрес", "Маршрут", "Пломба",
-        "Коробов\nвыдано", "Коробов\nполучено", "Подпись и\nпечать", "Подпись\nводителя"
-    ]
-    
-    col_widths = [10, 20, 35, 45, 18, 18, 16, 16, 22, 22]
-    x = 15
+    # Таблица
+    headers = ["#", "Zakaz", "Magazin", "Adres", "Marshrut", "Plomba", "Vydano", "Polucheno", "Podpis", "Podpis vod"]
+    col_widths = [8, 18, 30, 40, 15, 15, 15, 15, 20, 20]
     
     # Рисуем заголовки
-    c.setFont('Helvetica-Bold' if not RUSSIAN_FONT_AVAILABLE else 'DejaVu', 7)
-    c.setFillColorRGB(0.17, 0.24, 0.31)  # #2c3e50
+    c.setFont("Helvetica-Bold", 7)
+    x_pos = x
+    for i, h in enumerate(headers):
+        c.rect(x_pos, y - 10, col_widths[i], 10, fill=0)
+        c.drawCentredString(x_pos + col_widths[i]/2, y - 5, h)
+        x_pos += col_widths[i]
     
-    for i, header in enumerate(headers):
-        c.rect(x, y - 10, col_widths[i], 12, fill=True)
-        c.setFillColorRGB(1, 1, 1)  # white
-        c.drawCentredString(x + col_widths[i]/2, y - 5, header)
-        x += col_widths[i]
-    
-    c.setFillColorRGB(0, 0, 0)  # black
-    y -= 12
+    y -= 10
+    c.setFont("Helvetica", 6)
     
     # Данные
-    c.setFont('Helvetica' if not RUSSIAN_FONT_AVAILABLE else 'DejaVu', 6)
-    
     for idx, (_, row) in enumerate(all_routes_df.iterrows(), start=1):
-        x = 15
-        
-        # Проверка на новую страницу
-        if y < 40:
+        x_pos = x
+        if y < 50:
             c.showPage()
-            y = 200
-            # Рисуем заголовки на новой странице
-            x = 15
-            c.setFont('Helvetica-Bold' if not RUSSIAN_FONT_AVAILABLE else 'DejaVu', 7)
-            c.setFillColorRGB(0.17, 0.24, 0.31)
-            for i, header in enumerate(headers):
-                c.rect(x, y - 10, col_widths[i], 12, fill=True)
-                c.setFillColorRGB(1, 1, 1)
-                c.drawCentredString(x + col_widths[i]/2, y - 5, header)
-                x += col_widths[i]
-            c.setFillColorRGB(0, 0, 0)
-            y -= 12
-            c.setFont('Helvetica' if not RUSSIAN_FONT_AVAILABLE else 'DejaVu', 6)
-            x = 15
+            y = height - 30
+            c.setFont("Helvetica-Bold", 7)
+            x_pos = x
+            for i, h in enumerate(headers):
+                c.rect(x_pos, y - 10, col_widths[i], 10, fill=0)
+                c.drawCentredString(x_pos + col_widths[i]/2, y - 5, h)
+                x_pos += col_widths[i]
+            y -= 10
+            c.setFont("Helvetica", 6)
+            x_pos = x
         
-        shop_name = str(row.get("Название магазина", ""))[:25]
-        address = str(row.get("Адрес магазина", ""))[:35]
+        c.rect(x_pos, y - 8, col_widths[0], 8)
+        c.drawCentredString(x_pos + col_widths[0]/2, y - 4, str(idx))
+        x_pos += col_widths[0]
         
-        c.rect(x, y - 8, col_widths[0], 9)
-        c.drawCentredString(x + col_widths[0]/2, y - 4, str(idx))
-        x += col_widths[0]
+        c.rect(x_pos, y - 8, col_widths[1], 8)
+        c.drawCentredString(x_pos + col_widths[1]/2, y - 4, str(row.get("№ заказа", ""))[:10])
+        x_pos += col_widths[1]
         
-        c.rect(x, y - 8, col_widths[1], 9)
-        c.drawCentredString(x + col_widths[1]/2, y - 4, str(row.get("№ заказа", ""))[:12])
-        x += col_widths[1]
+        c.rect(x_pos, y - 8, col_widths[2], 8)
+        c.drawString(x_pos + 2, y - 4, str(row.get("Название магазина", ""))[:20])
+        x_pos += col_widths[2]
         
-        c.rect(x, y - 8, col_widths[2], 9)
-        c.drawString(x + 2, y - 4, shop_name)
-        x += col_widths[2]
+        c.rect(x_pos, y - 8, col_widths[3], 8)
+        c.drawString(x_pos + 2, y - 4, str(row.get("Адрес магазина", ""))[:30])
+        x_pos += col_widths[3]
         
-        c.rect(x, y - 8, col_widths[3], 9)
-        c.drawString(x + 2, y - 4, address)
-        x += col_widths[3]
+        c.rect(x_pos, y - 8, col_widths[4], 8)
+        c.drawCentredString(x_pos + col_widths[4]/2, y - 4, str(row.get("Номер маршрута", "")))
+        x_pos += col_widths[4]
         
-        c.rect(x, y - 8, col_widths[4], 9)
-        c.drawCentredString(x + col_widths[4]/2, y - 4, str(row.get("Номер маршрута", "")))
-        x += col_widths[4]
+        c.rect(x_pos, y - 8, col_widths[5], 8)
+        c.drawCentredString(x_pos + col_widths[5]/2, y - 4, plomb[:8])
+        x_pos += col_widths[5]
         
-        c.rect(x, y - 8, col_widths[5], 9)
-        c.drawCentredString(x + col_widths[5]/2, y - 4, plomb[:10])
-        x += col_widths[5]
+        c.rect(x_pos, y - 8, col_widths[6], 8)
+        c.drawCentredString(x_pos + col_widths[6]/2, y - 4, str(int(row.get("кол-во штук в заказе", 0))))
+        x_pos += col_widths[6]
         
-        c.rect(x, y - 8, col_widths[6], 9)
-        c.drawCentredString(x + col_widths[6]/2, y - 4, str(int(row.get("кол-во штук в заказе", 0))))
-        x += col_widths[6]
+        c.rect(x_pos, y - 8, col_widths[7], 8)
+        c.drawCentredString(x_pos + col_widths[7]/2, y - 4, "_____")
+        x_pos += col_widths[7]
         
-        c.rect(x, y - 8, col_widths[7], 9)
-        c.drawCentredString(x + col_widths[7]/2, y - 4, "_____")
-        x += col_widths[7]
+        c.rect(x_pos, y - 8, col_widths[8], 8)
+        c.drawCentredString(x_pos + col_widths[8]/2, y - 4, "______")
+        x_pos += col_widths[8]
         
-        c.rect(x, y - 8, col_widths[8], 9)
-        c.drawCentredString(x + col_widths[8]/2, y - 4, "______")
-        x += col_widths[8]
-        
-        c.rect(x, y - 8, col_widths[9], 9)
-        c.drawCentredString(x + col_widths[9]/2, y - 4, "______")
+        c.rect(x_pos, y - 8, col_widths[9], 8)
+        c.drawCentredString(x_pos + col_widths[9]/2, y - 4, "______")
         
         y -= 10
     
     y -= 15
     
     # Итого
-    c.setFont('Helvetica-Bold' if not RUSSIAN_FONT_AVAILABLE else 'DejaVu', 10)
-    c.drawString(15, y, f"Итого коробов по всем маршрутам: {total_boxes}")
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(x, y, f"ITOGO korobov: {int(all_routes_df['кол-во штук в заказе'].sum())}")
     y -= 20
     
     # Подписи
-    c.setFont('Helvetica' if not RUSSIAN_FONT_AVAILABLE else 'DejaVu', 9)
-    c.drawString(15, y, "Подпись водителя: ___________________________")
+    c.setFont("Helvetica", 9)
+    c.drawString(x, y, "Podpis voditelya: ___________________________")
     y -= 10
-    c.drawString(15, y, "Подпись принимающей стороны: ___________________________")
+    c.drawString(x, y, "Podpis prinimayuschey storony: ___________________________")
     y -= 10
-    c.drawString(15, y, "Печать: ___________________________")
-    y -= 15
-    c.drawString(15, y, f"Дата: {datetime.now().strftime('%d.%m.%Y')}")
+    c.drawString(x, y, "Pechat: ___________________________")
     
-    # Сохраняем PDF
     c.save()
     buffer.seek(0)
-    
     return buffer
 
 # ---------------- UI ----------------
 
-st.title("🚚 Система управления отгрузкой маршрутов")
+st.title("🚚 Sistema upravleniya otgruzkoy marshrutov")
 st.markdown("---")
 
 try:
     df = get_data()
 except Exception as e:
-    st.error(f"❌ Ошибка подключения к Google Sheets: {str(e)}")
+    st.error(f"Error: {str(e)}")
     st.stop()
 
-# Фильтрация данных
 if "Статус отгрузки" in df.columns:
     not_shipped = df[df["Статус отгрузки"] != "ОТГРУЖЕН"]
     shipped = df[df["Статус отгрузки"] == "ОТГРУЖЕН"]
@@ -333,42 +241,31 @@ else:
     not_shipped = df.copy()
     shipped = pd.DataFrame()
 
-# ---------------- METRICS ----------------
-st.subheader("📊 Сводная информация")
-
+# METRICS
 col1, col2, col3, col4, col5 = st.columns(5)
-
 with col1:
-    st.metric("🚫 Не отгружено маршрутов", not_shipped["Номер маршрута"].nunique() if len(not_shipped) > 0 else 0)
-
+    st.metric("Ne otgruzheno", not_shipped["Номер маршрута"].nunique() if len(not_shipped) > 0 else 0)
 with col2:
-    st.metric("✅ Отгружено маршрутов", shipped["Номер маршрута"].nunique() if len(shipped) > 0 else 0)
-
+    st.metric("Otgruzheno", shipped["Номер маршрута"].nunique() if len(shipped) > 0 else 0)
 with col3:
-    st.metric("📍 Всего точек доставки", len(not_shipped))
-
+    st.metric("Tochek", len(not_shipped))
 with col4:
     total_boxes = not_shipped["кол-во штук в заказе"].sum() if len(not_shipped) > 0 else 0
-    st.metric("📦 Всего коробок к отгрузке", int(total_boxes))
-
+    st.metric("Korobok", int(total_boxes))
 with col5:
-    if len(df) > 0 and df["Номер маршрута"].nunique() > 0:
-        completion_rate = (shipped["Номер маршрута"].nunique() / df["Номер маршрута"].nunique() * 100)
-    else:
-        completion_rate = 0
-    st.metric("📈 Прогресс отгрузки", f"{completion_rate:.1f}%")
+    completion = (shipped["Номер маршрута"].nunique() / df["Номер маршрута"].nunique() * 100) if len(df) > 0 else 0
+    st.metric("Progress", f"{completion:.1f}%")
 
 st.markdown("---")
 
-# ---------------- SIDEBAR ----------------
+# SIDEBAR
 with st.sidebar:
-    st.header("🔍 Детальная информация")
+    st.header("Detali")
+    view_type = st.radio("Pokazat:", ["Neotgruzhennye", "Otgruzhennye", "Vse"])
     
-    view_type = st.radio("Показать:", ["Неотгруженные маршруты", "Отгруженные маршруты", "Все маршруты"])
-    
-    if view_type == "Неотгруженные маршруты":
+    if view_type == "Neotgruzhennye":
         display_df = not_shipped
-    elif view_type == "Отгруженные маршруты":
+    elif view_type == "Otgruzhennye":
         display_df = shipped
     else:
         display_df = df
@@ -377,121 +274,60 @@ with st.sidebar:
         route_summary = display_df.groupby("Номер маршрута").agg({
             "№ заказа": "count",
             "кол-во штук в заказе": "sum"
-        }).rename(columns={"№ заказа": "Кол-во заказов", "кол-во штук в заказе": "Коробок"})
-        
+        }).rename(columns={"№ заказа": "Zakazov", "кол-во штук в заказе": "Korobok"})
         st.dataframe(route_summary, use_container_width=True)
-        
-        if len(route_summary) > 0:
-            selected_route = st.selectbox("Выберите маршрут для детализации", route_summary.index)
-            if selected_route:
-                route_details = display_df[display_df["Номер маршрута"] == selected_route]
-                st.markdown("**Состав маршрута:**")
-                st.dataframe(
-                    route_details[["№ заказа", "Название магазина", "Адрес магазина", "кол-во штук в заказе"]],
-                    use_container_width=True,
-                    hide_index=True
-                )
 
 st.markdown("---")
 
-# ---------------- SHIPMENT FORM ----------------
-st.subheader("🚛 Отгрузка маршрутов")
+# FORM
+st.subheader("Otgruzka marshrutov")
 
 col1, col2, col3 = st.columns(3)
-
 with col1:
-    car_number = st.text_input("🚐 Номер машины", placeholder="А123ВС77")
-
+    car_number = st.text_input("Nomer mashiny", placeholder="A123BC77")
 with col2:
-    driver = st.text_input("👤 Водитель", placeholder="Фамилия И.О.")
-
+    driver = st.text_input("Voditel", placeholder="Ivanov I.I.")
 with col3:
-    plomb = st.text_input("🔒 № пломбы", placeholder="номер пломбы")
+    plomb = st.text_input("Nomer plomby", placeholder="12345")
 
 st.markdown("---")
 
-# Выбор маршрутов
 not_shipped_routes = sorted(not_shipped["Номер маршрута"].dropna().unique()) if len(not_shipped) > 0 else []
 
 if len(not_shipped_routes) > 0:
-    st.subheader("📋 Выберите маршруты для отгрузки")
-    
-    selected_routes = st.multiselect(
-        "Маршруты, готовые к отгрузке:",
-        options=not_shipped_routes,
-        format_func=lambda x: f"🗺️ Маршрут {x}"
-    )
+    st.subheader("Vyberite marshruty")
+    selected_routes = st.multiselect("Marshruty:", options=not_shipped_routes)
     
     if selected_routes:
-        st.markdown("### 📦 Детали выбранных маршрутов")
-        
         details_df = not_shipped[not_shipped["Номер маршрута"].isin(selected_routes)]
+        st.info(f"Vybranno: {len(selected_routes)} marshrutov | {len(details_df)} magazinov | {int(details_df['кол-во штук в заказе'].sum())} korobok")
         
-        total_selected_boxes = int(details_df["кол-во штук в заказе"].sum())
-        total_selected_stores = len(details_df)
-        
-        st.info(f"📊 Выбрано {len(selected_routes)} маршрутов | {total_selected_stores} магазинов | {total_selected_boxes} коробок")
-        
-        for route in selected_routes:
-            route_data = details_df[details_df["Номер маршрута"] == route]
-            total_boxes_route = int(route_data["кол-во штук в заказе"].sum())
-            
-            with st.expander(f"🗺️ Маршрут {route} - {len(route_data)} магазинов, {total_boxes_route} коробок", expanded=False):
-                st.dataframe(
-                    route_data[["№ заказа", "Название магазина", "Адрес магазина", "кол-во штук в заказе"]],
-                    use_container_width=True,
-                    hide_index=True
-                )
-        
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            ship_button = st.button("✅ ОТГРУЗИТЬ ВЫБРАННЫЕ МАРШРУТЫ", type="primary", use_container_width=True)
-        
-        if ship_button:
+        if st.button("OTGRUZIT", type="primary", use_container_width=True):
             if not car_number:
-                st.error("❌ Введите номер машины!")
+                st.error("Vvedite nomer mashiny!")
                 st.stop()
-            
             if not driver:
-                st.error("❌ Введите ФИО водителя!")
+                st.error("Vvedite voditelya!")
                 st.stop()
-            
-            if not plomb:
-                st.warning("⚠️ Рекомендуется указать номер пломбы!")
             
             selected_data = df[df["Номер маршрута"].isin(selected_routes)]
             
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            
+            progress = st.progress(0)
             for i, route in enumerate(selected_routes):
-                status_text.text(f"Отгрузка маршрута {route}...")
                 update_route(route, car_number, driver, plomb)
-                progress_bar.progress((i + 1) / len(selected_routes))
+                progress.progress((i + 1) / len(selected_routes))
             
-            status_text.text("Генерация маршрутного листа...")
             pdf_buffer = generate_pdf(selected_data, selected_routes, driver, car_number, plomb)
             
-            status_text.text("✅ Отгрузка завершена!")
+            st.success(f"Otgruzheno {len(selected_routes)} marshrutov!")
             
-            st.success(f"✅ Успешно отгружено {len(selected_routes)} маршрутов!")
-            
-            st.subheader("📄 Скачать маршрутный лист")
-            
-            col1, col2, col3 = st.columns([1, 2, 1])
-            with col2:
-                st.download_button(
-                    label="📄 Скачать маршрутный лист (PDF)",
-                    data=pdf_buffer,
-                    file_name=f"Маршрутный_лист_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-                    mime="application/pdf",
-                    use_container_width=True
-                )
-            
-            if st.button("🔄 Обновить данные", key="refresh"):
-                st.rerun()
+            st.download_button(
+                label="Skachat PDF",
+                data=pdf_buffer,
+                file_name=f"marshrut_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                mime="application/pdf"
+            )
 else:
-    st.info("🎉 Все маршруты отгружены! Отличная работа!")
+    st.info("Vse marshruty otgruzheny!")
 
-st.markdown("---")
-st.caption(f"Последнее обновление: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}")
+st.caption(f"Obnovleno: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}")
