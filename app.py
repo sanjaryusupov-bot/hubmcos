@@ -16,8 +16,7 @@ from reportlab.platypus import (
     TableStyle,
     Paragraph,
     Spacer,
-    HRFlowable,
-    PageBreak
+    HRFlowable
 )
 
 from reportlab.lib import colors
@@ -181,10 +180,10 @@ def generate_delivery_pdf(df, route, driver, car, plomb):
     doc = SimpleDocTemplate(
         filename,
         pagesize=landscape(A4),
-        leftMargin=10*mm,
-        rightMargin=10*mm,
-        topMargin=15*mm,
-        bottomMargin=15*mm
+        leftMargin=8*mm,
+        rightMargin=8*mm,
+        topMargin=12*mm,
+        bottomMargin=12*mm
     )
 
     styles = getSampleStyleSheet()
@@ -192,46 +191,46 @@ def generate_delivery_pdf(df, route, driver, car, plomb):
     # Стили для кириллицы
     styleTitle = ParagraphStyle(
         'CustomTitle',
-        parent=styles['Heading1'],
+        parent=styles['Normal'],
         fontName='HYSMyeongJo-Medium',
-        fontSize=16,
-        leading=20,
+        fontSize=14,
+        leading=18,
         alignment=1,  # Center
-        spaceAfter=10
+        spaceAfter=8,
+        spaceBefore=5
+    )
+    
+    styleInfo = ParagraphStyle(
+        'CustomInfo',
+        parent=styles['Normal'],
+        fontName='HYSMyeongJo-Medium',
+        fontSize=9,
+        leading=11
     )
     
     styleHeader = ParagraphStyle(
         'CustomHeader',
-        parent=styles['Heading2'],
-        fontName='HYSMyeongJo-Medium',
-        fontSize=11,
-        leading=14,
-        spaceAfter=5
-    )
-    
-    styleNormal = ParagraphStyle(
-        'CustomNormal',
         parent=styles['Normal'],
         fontName='HYSMyeongJo-Medium',
-        fontSize=9,
-        leading=12
+        fontSize=8,
+        leading=10,
+        alignment=1
+    )
+    
+    styleCell = ParagraphStyle(
+        'CustomCell',
+        parent=styles['Normal'],
+        fontName='HYSMyeongJo-Medium',
+        fontSize=7,
+        leading=9
     )
     
     styleBold = ParagraphStyle(
         'CustomBold',
         parent=styles['Normal'],
         fontName='HYSMyeongJo-Medium',
-        fontSize=9,
-        leading=12,
-        alignment=0  # Left
-    )
-    
-    styleSmall = ParagraphStyle(
-        'CustomSmall',
-        parent=styles['Normal'],
-        fontName='HYSMyeongJo-Medium',
-        fontSize=8,
-        leading=10
+        fontSize=7,
+        leading=9
     )
 
     elements = []
@@ -241,33 +240,25 @@ def generate_delivery_pdf(df, route, driver, car, plomb):
     # Заголовок
     title = Paragraph("<b>МАРШРУТНЫЙ ЛИСТ ДОСТАВКИ</b>", styleTitle)
     elements.append(title)
+    elements.append(Spacer(1, 5))
+    
+    # Информация о маршруте в одной строке
+    route_info = f"<b>Маршрут:</b> {route} | <b>Дата:</b> {datetime.now().strftime('%d.%m.%Y')}"
+    elements.append(Paragraph(route_info, styleInfo))
+    
+    driver_info = f"<b>Водитель:</b> {driver} | <b>Номер машины:</b> {car}"
+    elements.append(Paragraph(driver_info, styleInfo))
+    
+    plomb_info = f"<b>№ пломбы:</b> {plomb} | <b>Кол-во магазинов:</b> {total_points}"
+    elements.append(Paragraph(plomb_info, styleInfo))
+    
     elements.append(Spacer(1, 8))
-    
-    # Информация о маршруте в 2 колонки
-    info_data = [
-        ["<b>Маршрут:</b>", route, "<b>Дата:</b>", datetime.now().strftime("%d.%m.%Y")],
-        ["<b>Водитель:</b>", driver, "<b>Номер машины:</b>", car],
-        ["<b>№ пломбы:</b>", plomb, "<b>Кол-во магазинов:</b>", str(total_points)]
-    ]
-    
-    info_table = Table(info_data, colWidths=[25*mm, 55*mm, 30*mm, 40*mm])
-    info_table.setStyle(TableStyle([
-        ('FONTNAME', (0,0), (-1,-1), 'HYSMyeongJo-Medium'),
-        ('FONTSIZE', (0,0), (-1,-1), 9),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('TOPPADDING', (0,0), (-1,-1), 3),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
-        ('LEFTPADDING', (0,0), (-1,-1), 2),
-        ('RIGHTPADDING', (0,0), (-1,-1), 2),
-    ]))
-    
-    elements.append(info_table)
-    elements.append(Spacer(1, 10))
     elements.append(HRFlowable(width="100%", thickness=1, color=colors.black))
-    elements.append(Spacer(1, 10))
+    elements.append(Spacer(1, 5))
 
     # Таблица с заказами
-    table_data = [[
+    # Заголовки таблицы
+    headers = [
         "<b>№ заказа</b>",
         "<b>Магазин</b>",
         "<b>Адрес</b>",
@@ -277,37 +268,44 @@ def generate_delivery_pdf(df, route, driver, car, plomb):
         "<b>Получено<br/>коробок</b>",
         "<b>Подпись, печать,<br/>комментарии</b>",
         "<b>Подпись<br/>водителя</b>"
-    ]]
+    ]
+    
+    table_data = [headers]
 
     for _, row in df.iterrows():
         # Делаем номер заказа жирным
         order_number = f"<b>{row['№ заказа']}</b>"
         
+        # Ограничиваем длину текста
+        shop_name = str(row["Название магазина"])[:35]
+        address = str(row["Адрес магазина"])[:45]
+        route_name = str(row["Номер маршрута"])
+        
         table_data.append([
             Paragraph(order_number, styleBold),
-            Paragraph(str(row["Название магазина"]), styleSmall),
-            Paragraph(str(row["Адрес магазина"]), styleSmall),
-            Paragraph(str(row["Номер маршрута"]), styleSmall),
-            Paragraph(plomb, styleSmall),
-            "",  # Выдано коробок - пустое поле
-            "",  # Получено коробок - пустое поле
-            "",  # Подпись, комментарии - пустое поле
-            ""   # Подпись водителя - пустое поле
+            Paragraph(shop_name, styleCell),
+            Paragraph(address, styleCell),
+            Paragraph(route_name, styleCell),
+            Paragraph(plomb, styleCell),
+            Paragraph("", styleCell),
+            Paragraph("", styleCell),
+            Paragraph("", styleCell),
+            Paragraph("", styleCell)
         ])
 
-    # Ширина колонок для A4 landscape
+    # Ширина колонок для landscape A4
     table = Table(
         table_data,
         colWidths=[
-            18*mm,  # № заказа
+            16*mm,  # № заказа
             35*mm,  # Магазин
             45*mm,  # Адрес
-            20*mm,  # Маршрут
-            18*mm,  # № пломбы
-            18*mm,  # Выдано коробок
-            18*mm,  # Получено коробок
+            18*mm,  # Маршрут
+            16*mm,  # № пломбы
+            16*mm,  # Выдано коробок
+            16*mm,  # Получено коробок
             35*mm,  # Подпись, комментарии
-            25*mm   # Подпись водителя
+            24*mm   # Подпись водителя
         ],
         repeatRows=1
     )
@@ -317,42 +315,40 @@ def generate_delivery_pdf(df, route, driver, car, plomb):
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1F2937")),
         ('TEXTCOLOR', (0,0), (-1,0), colors.white),
         ('FONTNAME', (0,0), (-1,0), 'HYSMyeongJo-Medium'),
-        ('FONTSIZE', (0,0), (-1,0), 9),
+        ('FONTSIZE', (0,0), (-1,0), 7.5),
         ('ALIGN', (0,0), (-1,0), 'CENTER'),
         ('VALIGN', (0,0), (-1,0), 'MIDDLE'),
         
         # Body styling
         ('FONTNAME', (0,1), (-1,-1), 'HYSMyeongJo-Medium'),
-        ('FONTSIZE', (0,1), (-1,-1), 8),
+        ('FONTSIZE', (0,1), (-1,-1), 7),
         ('VALIGN', (0,1), (-1,-1), 'TOP'),
         
         # Borders
-        ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+        ('GRID', (0,0), (-1,-1), 0.3, colors.black),
         
         # Padding
-        ('TOPPADDING', (0,0), (-1,-1), 5),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
-        ('LEFTPADDING', (0,0), (-1,-1), 3),
-        ('RIGHTPADDING', (0,0), (-1,-1), 3),
+        ('TOPPADDING', (0,0), (-1,-1), 3),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+        ('LEFTPADDING', (0,0), (-1,-1), 2),
+        ('RIGHTPADDING', (0,0), (-1,-1), 2),
         
         # Alignment
         ('ALIGN', (0,1), (0,-1), 'CENTER'),  # Order number center
-        ('ALIGN', (3,1), (4,-1), 'CENTER'),  # Route and plomb center
-        ('ALIGN', (5,1), (8,-1), 'CENTER'),  # Empty fields center
+        ('ALIGN', (3,1), (5,-1), 'CENTER'),  # Route, plomb, issued center
+        ('ALIGN', (6,1), (8,-1), 'CENTER'),  # Received, signature, driver signature center
         
         # Left align for text columns
         ('ALIGN', (1,1), (2,-1), 'LEFT'),
     ]))
 
     elements.append(table)
-    elements.append(Spacer(1, 15))
+    elements.append(Spacer(1, 10))
     
-    # Примечания внизу
+    # Примечания
     notes = Paragraph(
-        "<b>Примечания:</b><br/>"
-        "• Количество коробок заполняется при отгрузке<br/>"
-        "• Получение подтверждается подписью и печатью",
-        styleSmall
+        "<b>Примечания:</b> • Количество коробок заполняется при отгрузке • Получение подтверждается подписью и печатью",
+        styleCell
     )
     elements.append(notes)
 
@@ -397,7 +393,7 @@ col3.metric(
 )
 
 col4.metric(
-    "Коробок (план)",
+    "Кол-во шт",
     int(not_shipped["кол-во штук в заказе"].sum())
 )
 
@@ -407,18 +403,24 @@ st.divider()
 
 st.subheader("📊 Итоги по неотгруженным точкам")
 
-summary_not_shipped = not_shipped[[
-    "Название магазина",
-    "Адрес магазина",
-    "кол-во штук в заказе"
-]].copy()
+# Сводная таблица: группируем по магазину и адресу
+summary_not_shipped = not_shipped.groupby(
+    ["Название магазина", "Адрес магазина"]
+)["кол-во штук в заказе"].sum().reset_index()
 
 summary_not_shipped.columns = ["Магазин", "Адрес", "Кол-во шт"]
 
-st.dataframe(
+# Добавляем итоговую строку
+total_shirts = summary_not_shipped["Кол-во шт"].sum()
+summary_with_total = pd.concat([
     summary_not_shipped,
+    pd.DataFrame([["ИТОГО:", "", total_shirts]], columns=summary_not_shipped.columns)
+])
+
+st.dataframe(
+    summary_with_total,
     use_container_width=True,
-    height=300,
+    height=400,
     hide_index=True
 )
 
@@ -431,14 +433,14 @@ if not st.session_state.shipment_completed:
 
     with left:
         st.subheader("🚛 Данные машины")
-        car_number = st.text_input("Номер машины")
-        driver = st.text_input("Водитель")
-        plomb = st.text_input("№ пломбы")
+        car_number = st.text_input("Номер машины", key="car_input")
+        driver = st.text_input("Водитель", key="driver_input")
+        plomb = st.text_input("№ пломбы", key="plomb_input")
 
     with right:
         st.subheader("📦 Маршруты")
         routes = sorted(not_shipped["Номер маршрута"].dropna().unique())
-        selected_routes = st.multiselect("Выберите маршруты", routes)
+        selected_routes = st.multiselect("Выберите маршруты", routes, key="routes_select")
 
     # ---------------- DETAILS ----------------
     if selected_routes:
@@ -487,7 +489,7 @@ if not st.session_state.shipment_completed:
             # Обновляем статус в Google Sheets
             update_route(route, car_number, driver, plomb)
             
-            # Генерируем PDF
+            # Генерируем PDF (все магазины маршрута в одном PDF)
             pdf_file = generate_delivery_pdf(
                 route_df,
                 route,
@@ -508,22 +510,21 @@ else:
     st.success("✅ Маршруты успешно отгружены!")
     st.info("📄 Скачайте PDF-листы перед продолжением работы")
     
-    # Кнопки скачивания для каждого маршрута
-    for route, pdf_file in st.session_state.pdf_files:
-        with open(pdf_file, "rb") as f:
-            st.download_button(
-                label=f"📄 Скачать маршрутный лист {route}",
-                data=f,
-                file_name=f"Маршрутный_лист_{route}.pdf",
-                mime="application/pdf",
-                key=f"download_{route}"
-            )
+    # Создаем колонки для кнопок скачивания
+    cols = st.columns(min(len(st.session_state.pdf_files), 3))
+    
+    for idx, (route, pdf_file) in enumerate(st.session_state.pdf_files):
+        with cols[idx % 3]:
+            with open(pdf_file, "rb") as f:
+                st.download_button(
+                    label=f"📄 Маршрут {route}",
+                    data=f,
+                    file_name=f"Маршрут_{route}.pdf",
+                    mime="application/pdf",
+                    key=f"download_{route}"
+                )
     
     st.divider()
-    
-    # Кнопка для печати всех PDF (если нужно несколько)
-    if len(st.session_state.pdf_files) > 1:
-        st.info("💡 Для печати всех маршрутов скачайте каждый файл отдельно")
     
     # Кнопка сброса
     if st.button("🔄 Начать новую отгрузку"):
