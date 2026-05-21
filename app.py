@@ -3,23 +3,9 @@ import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
-from reportlab.platypus import (
-    SimpleDocTemplate,
-    Table,
-    TableStyle,
-    Paragraph,
-    Spacer
-)
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.pagesizes import A4, landscape
-from reportlab.lib.units import mm
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
 from io import BytesIO
 import random
-import urllib.request
-import os
+from fpdf import FPDF
 
 # ---------------- SETTINGS ----------------
 
@@ -119,105 +105,49 @@ def update_route(route_name, car_number, driver, plomb):
             sheet.update_cell(idx, plomb_col, plomb)
             break
 
-# ---------------- PDF GENERATION WITH RUSSIAN SUPPORT ----------------
+# ---------------- PDF GENERATION WITH FPDF ----------------
 
-def download_font():
-    """Скачивает бесплатный шрифт DejaVuSans для поддержки русского языка"""
-    font_url = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf"
-    font_path = "/tmp/DejaVuSans.ttf"
+class RussianPDF(FPDF):
+    def __init__(self):
+        super().__init__()
+        # Добавляем шрифт DejaVu (скачиваем если нет)
+        self.add_font('DejaVu', '', '/tmp/DejaVuSans.ttf', uni=True)
+        self.add_font('DejaVu', 'B', '/tmp/DejaVuSans-Bold.ttf', uni=True)
+
+def download_dejavu_fonts():
+    """Скачивает шрифты DejaVu для поддержки русского языка"""
+    import urllib.request
+    import os
     
-    if not os.path.exists(font_path):
-        try:
-            urllib.request.urlretrieve(font_url, font_path)
-        except:
-            return None
-    return font_path
-
-# Регистрируем русский шрифт
-try:
-    font_path = download_font()
-    if font_path and os.path.exists(font_path):
-        pdfmetrics.registerFont(TTFont('RussianFont', font_path))
-        pdfmetrics.registerFont(TTFont('RussianFont-Bold', font_path))
-        RUSSIAN_FONT_AVAILABLE = True
-    else:
-        RUSSIAN_FONT_AVAILABLE = False
-except:
-    RUSSIAN_FONT_AVAILABLE = False
+    fonts = {
+        '/tmp/DejaVuSans.ttf': 'https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf',
+        '/tmp/DejaVuSans-Bold.ttf': 'https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans-Bold.ttf'
+    }
+    
+    for path, url in fonts.items():
+        if not os.path.exists(path):
+            try:
+                urllib.request.urlretrieve(url, path)
+            except:
+                pass
 
 def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
-    """Генерирует один PDF со всеми выбранными маршрутами"""
+    """Генерирует PDF с помощью FPDF (отличная поддержка русского языка)"""
+    
+    # Скачиваем шрифты
+    download_dejavu_fonts()
+    
     buffer = BytesIO()
     
-    # Используем альбомную ориентацию
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=landscape(A4),
-        rightMargin=10*mm,
-        leftMargin=10*mm,
-        topMargin=15*mm,
-        bottomMargin=15*mm
-    )
+    # Создаем PDF в альбомной ориентации
+    pdf = RussianPDF()
+    pdf.add_page(orientation='L')
+    pdf.set_auto_page_break(auto=True, margin=15)
     
-    styles = getSampleStyleSheet()
+    # Устанавливаем шрифт
+    pdf.set_font('DejaVu', '', 12)
     
-    # Используем стандартные шрифты reportlab (они работают с кириллицей через Unicode)
-    # Это самый надежный способ
-    font_name = 'Helvetica'
-    font_name_bold = 'Helvetica-Bold'
-    
-    # Стили
-    title_style = ParagraphStyle(
-        'MainTitle',
-        parent=styles['Normal'],
-        fontSize=16,
-        alignment=1,
-        spaceAfter=15,
-        fontName=font_name_bold,
-        encoding='utf-8'
-    )
-    
-    header_style = ParagraphStyle(
-        'HeaderStyle',
-        parent=styles['Normal'],
-        fontSize=10,
-        alignment=0,
-        spaceAfter=6,
-        fontName=font_name,
-        encoding='utf-8'
-    )
-    
-    bold_style = ParagraphStyle(
-        'BoldStyle',
-        parent=styles['Normal'],
-        fontSize=10,
-        alignment=0,
-        spaceAfter=6,
-        fontName=font_name_bold,
-        encoding='utf-8'
-    )
-    
-    cell_style = ParagraphStyle(
-        'CellStyle',
-        parent=styles['Normal'],
-        fontSize=8,
-        alignment=0,
-        fontName=font_name,
-        encoding='utf-8'
-    )
-    
-    cell_center_style = ParagraphStyle(
-        'CellCenterStyle',
-        parent=styles['Normal'],
-        fontSize=8,
-        alignment=1,
-        fontName=font_name,
-        encoding='utf-8'
-    )
-    
-    elements = []
-    
-    # Случайный номер документа
+    # Случайный номер
     random_num = random.randint(10000, 99999)
     
     # Общая статистика
@@ -225,108 +155,93 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
     total_stores = len(all_routes_df)
     
     # ЗАГОЛОВОК
-    elements.append(Paragraph(u"МАРШРУТНЫЙ ЛИСТ", title_style))
-    elements.append(Spacer(1, 5))
+    pdf.set_font('DejaVu', 'B', 20)
+    pdf.cell(0, 15, 'МАРШРУТНЫЙ ЛИСТ', ln=True, align='C')
+    pdf.ln(5)
     
-    # Номер документа
-    elements.append(Paragraph(f"№ {random_num}", header_style))
-    elements.append(Spacer(1, 10))
+    # Номер
+    pdf.set_font('DejaVu', '', 12)
+    pdf.cell(0, 8, f'№ {random_num}', ln=True, align='L')
+    pdf.ln(5)
     
     # Информация о рейсе
-    elements.append(Paragraph(f"<b>Водитель:</b> {driver}", header_style))
-    elements.append(Paragraph(f"<b>А/м гос номер:</b> {car}", header_style))
-    elements.append(Paragraph(f"<b>Дата:</b> {datetime.now().strftime('%d.%m.%Y')}", header_style))
-    elements.append(Paragraph(f"<b>№ пломбы:</b> {plomb}", header_style))
-    elements.append(Spacer(1, 10))
+    pdf.set_font('DejaVu', '', 11)
+    pdf.cell(0, 8, f'Водитель: {driver}', ln=True)
+    pdf.cell(0, 8, f'А/м гос номер: {car}', ln=True)
+    pdf.cell(0, 8, f'Дата: {datetime.now().strftime("%d.%m.%Y")}', ln=True)
+    pdf.cell(0, 8, f'№ пломбы: {plomb}', ln=True)
+    pdf.ln(5)
     
     # Сводка по маршрутам
-    routes_summary = []
+    pdf.set_font('DejaVu', 'B', 11)
+    pdf.cell(0, 8, 'Маршруты в рейсе:', ln=True)
+    pdf.set_font('DejaVu', '', 10)
     for route in routes_list:
         route_data = all_routes_df[all_routes_df["Номер маршрута"] == route]
-        routes_summary.append(f"Маршрут {route} ({len(route_data)} магазинов, {int(route_data['кол-во штук в заказе'].sum())} коробок)")
-    
-    elements.append(Paragraph("<b>Маршруты в рейсе:</b>", bold_style))
-    for summary in routes_summary:
-        elements.append(Paragraph(f"• {summary}", header_style))
-    elements.append(Spacer(1, 10))
+        pdf.cell(0, 6, f'• Маршрут {route} ({len(route_data)} магазинов, {int(route_data["кол-во штук в заказе"].sum())} коробок)', ln=True)
+    pdf.ln(5)
     
     # Строка с коробками
-    elements.append(Paragraph(
-        f"<b>Водитель {driver} получил всего __________ коробов для {total_stores} магазинов</b>",
-        bold_style
-    ))
-    elements.append(Spacer(1, 15))
+    pdf.set_font('DejaVu', 'B', 11)
+    pdf.cell(0, 8, f'Водитель {driver} получил всего __________ коробов для {total_stores} магазинов', ln=True)
+    pdf.ln(8)
     
     # ТАБЛИЦА
-    # Заголовки таблицы
-    table_headers = [
-        u"№", u"Заказ", u"Магазин", u"Адрес",
-        u"Маршрут", u"Пломба", u"Коробов выдано",
-        u"Коробов получено", u"Подпись и печать", u"Подпись водителя"
-    ]
+    # Ширина колонок (в мм) для A4 landscape (297мм)
+    col_widths = [12, 25, 40, 50, 22, 22, 25, 25, 28, 28]
     
-    table_data = [[Paragraph(h, cell_center_style) for h in table_headers]]
+    # Заголовки
+    headers = ['№', 'Заказ', 'Магазин', 'Адрес', 'Маршрут', 'Пломба', 'Коробов выдано', 'Коробов получено', 'Подпись и печать', 'Подпись водителя']
     
-    # Заполнение данными
+    pdf.set_font('DejaVu', 'B', 7)
+    pdf.set_fill_color(44, 62, 80)
+    pdf.set_text_color(255, 255, 255)
+    
+    # Рисуем заголовки
+    for i, header in enumerate(headers):
+        pdf.cell(col_widths[i], 10, header, border=1, align='C', fill=True)
+    pdf.ln()
+    
+    # Данные
+    pdf.set_font('DejaVu', '', 7)
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_fill_color(255, 255, 255)
+    
     for idx, (_, row) in enumerate(all_routes_df.iterrows(), start=1):
-        # Ограничиваем длину текста для лучшего отображения
-        shop_name = str(row.get("Название магазина", ""))[:35]
-        address = str(row.get("Адрес магазина", ""))[:45]
+        # Ограничиваем длину текста
+        shop_name = str(row.get("Название магазина", ""))[:30]
+        address = str(row.get("Адрес магазина", ""))[:40]
         
-        table_data.append([
-            Paragraph(str(idx), cell_center_style),
-            Paragraph(str(row.get("№ заказа", "")), cell_style),
-            Paragraph(shop_name, cell_style),
-            Paragraph(address, cell_style),
-            Paragraph(str(row.get("Номер маршрута", "")), cell_center_style),
-            Paragraph(str(plomb), cell_center_style),
-            Paragraph(str(int(row.get("кол-во штук в заказе", 0))), cell_center_style),
-            Paragraph("________", cell_center_style),
-            Paragraph("_________", cell_center_style),
-            Paragraph("_________", cell_center_style)
-        ])
+        # Рисуем ячейки
+        pdf.cell(col_widths[0], 8, str(idx), border=1, align='C')
+        pdf.cell(col_widths[1], 8, str(row.get("№ заказа", ""))[:15], border=1, align='C')
+        pdf.cell(col_widths[2], 8, shop_name, border=1, align='L')
+        pdf.cell(col_widths[3], 8, address, border=1, align='L')
+        pdf.cell(col_widths[4], 8, str(row.get("Номер маршрута", "")), border=1, align='C')
+        pdf.cell(col_widths[5], 8, plomb, border=1, align='C')
+        pdf.cell(col_widths[6], 8, str(int(row.get("кол-во штук в заказе", 0))), border=1, align='C')
+        pdf.cell(col_widths[7], 8, '________', border=1, align='C')
+        pdf.cell(col_widths[8], 8, '_________', border=1, align='C')
+        pdf.cell(col_widths[9], 8, '_________', border=1, align='C')
+        pdf.ln()
     
-    # Ширина колонок (в мм) для landscape A4
-    col_widths = [
-        10*mm, 20*mm, 35*mm, 45*mm,
-        18*mm, 18*mm, 20*mm, 20*mm, 22*mm, 22*mm
-    ]
+    pdf.ln(8)
     
-    table = Table(table_data, colWidths=col_widths, repeatRows=1)
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2c3e50')),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-        ('FONTNAME', (0,0), (-1,0), font_name_bold),
-        ('FONTSIZE', (0,0), (-1,0), 8),
-        ('BACKGROUND', (0,1), (-1,-1), colors.white),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.black),
-        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('FONTSIZE', (0,1), (-1,-1), 7),
-        ('TOPPADDING', (0,0), (-1,-1), 3),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
-        ('LEFTPADDING', (0,0), (-1,-1), 2),
-        ('RIGHTPADDING', (0,0), (-1,-1), 2),
-    ]))
+    # Итого
+    pdf.set_font('DejaVu', 'B', 11)
+    pdf.cell(0, 8, f'Итого коробов по всем маршрутам: {total_boxes}', ln=True)
+    pdf.ln(15)
     
-    elements.append(table)
-    elements.append(Spacer(1, 15))
+    # Подписи
+    pdf.set_font('DejaVu', '', 11)
+    pdf.cell(0, 8, 'Подпись водителя: ___________________________', ln=True)
+    pdf.cell(0, 8, 'Подпись принимающей стороны: ___________________________', ln=True)
+    pdf.cell(0, 8, 'Печать: ___________________________', ln=True)
+    pdf.ln(8)
+    pdf.cell(0, 8, f'Дата: {datetime.now().strftime("%d.%m.%Y")}', ln=True)
     
-    # ИТОГО
-    elements.append(Paragraph(f"<b>Итого коробов по всем маршрутам: {total_boxes}</b>", bold_style))
-    elements.append(Spacer(1, 20))
-    
-    # ПОДПИСИ
-    elements.append(Paragraph(u"Подпись водителя: ___________________________", header_style))
-    elements.append(Spacer(1, 5))
-    elements.append(Paragraph(u"Подпись принимающей стороны: ___________________________", header_style))
-    elements.append(Spacer(1, 5))
-    elements.append(Paragraph(u"Печать: ___________________________", header_style))
-    elements.append(Spacer(1, 10))
-    elements.append(Paragraph(f"Дата: {datetime.now().strftime('%d.%m.%Y')}", header_style))
-    
-    # Строим PDF
-    doc.build(elements)
+    # Сохраняем в буфер
+    pdf.output(buffer)
     buffer.seek(0)
     
     return buffer
@@ -441,7 +356,6 @@ if len(not_shipped_routes) > 0:
         
         details_df = not_shipped[not_shipped["Номер маршрута"].isin(selected_routes)]
         
-        # Показываем сводку по выбранным маршрутам
         total_selected_boxes = int(details_df["кол-во штук в заказе"].sum())
         total_selected_stores = len(details_df)
         
@@ -453,7 +367,7 @@ if len(not_shipped_routes) > 0:
             
             with st.expander(f"🗺️ Маршрут {route} - {len(route_data)} магазинов, {total_boxes_route} коробок", expanded=False):
                 st.dataframe(
-                    route_data[["№ заказа", "Название магазина", "Адрес магазина", "кол-во штук в заказе"]],
+                    route_data[["№ заказа", "Название магасина", "Адрес магазина", "кол-во штук в заказе"]],
                     use_container_width=True,
                     hide_index=True
                 )
@@ -474,10 +388,8 @@ if len(not_shipped_routes) > 0:
             if not plomb:
                 st.warning("⚠️ Рекомендуется указать номер пломбы!")
             
-            # Получаем данные по выбранным маршрутам
             selected_data = df[df["Номер маршрута"].isin(selected_routes)]
             
-            # Обновляем статусы в Google Sheets
             progress_bar = st.progress(0)
             status_text = st.empty()
             
@@ -486,7 +398,6 @@ if len(not_shipped_routes) > 0:
                 update_route(route, car_number, driver, plomb)
                 progress_bar.progress((i + 1) / len(selected_routes))
             
-            # Генерируем ОДИН PDF со всеми маршрутами
             status_text.text("Генерация маршрутного листа...")
             pdf_buffer = generate_pdf(selected_data, selected_routes, driver, car_number, plomb)
             
@@ -494,7 +405,6 @@ if len(not_shipped_routes) > 0:
             
             st.success(f"✅ Успешно отгружено {len(selected_routes)} маршрутов!")
             
-            # Кнопка скачивания PDF
             st.subheader("📄 Скачать маршрутный лист")
             
             col1, col2, col3 = st.columns([1, 2, 1])
@@ -507,7 +417,6 @@ if len(not_shipped_routes) > 0:
                     use_container_width=True
                 )
             
-            # Кнопка для обновления страницы
             if st.button("🔄 Обновить данные", key="refresh"):
                 st.rerun()
 else:
