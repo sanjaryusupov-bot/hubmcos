@@ -18,8 +18,6 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from io import BytesIO
 import random
-import base64
-import tempfile
 import os
 
 # ---------------- SETTINGS ----------------
@@ -120,15 +118,52 @@ def update_route(route_name, car_number, driver, plomb):
             sheet.update_cell(idx, plomb_col, plomb)
             break
 
-# ---------------- PDF GENERATION WITH EMBEDDED FONT ----------------
+# ---------------- PDF GENERATION WITH RUSSIAN FONT ----------------
 
-# Базовый64 шрифт DejaVuSans (полная версия)
-DEJAVU_TTF_BASE64 = """
-AAEAAAAOAIAAAwBgT1MvMg8SBJcAAAC8AAAAYGNtYXAWy1b0AAABHAAAAExnYXNwAAAAEAAAAXgAAAAIZ2x5ZlJp6xYAAAGQAAABeGhlYWQYyQ6yAAAB+AAAADZoaGVhBqgE7wAAAiQAAAAkaG10eD6s8pQAAAI4AAAALGxvY2EDqgABAAACUAAAABxtYXhwAAwAIgAAAlwAAAAgbmFtZcR1c2YAAAJ8AAABUXBvc3QAAwAAAAADxAAAACBwcmVwAAEAAAAAA8gAAAAA
-"""  # Здесь должен быть полный base64 шрифта
+def register_russian_font():
+    """Регистрирует шрифт для поддержки русского языка"""
+    try:
+        # Пробуем использовать системный шрифт Arial (есть на большинстве систем)
+        # В Debian/Ubuntu шрифты обычно в /usr/share/fonts/
+        font_paths = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/System/Library/Fonts/Arial.ttf",  # macOS
+            "C:\\Windows\\Fonts\\Arial.ttf",  # Windows
+            "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
+        ]
+        
+        # Пробуем найти шрифт
+        font_found = False
+        
+        for font_path in font_paths:
+            if os.path.exists(font_path):
+                if "Bold" in font_path or "Bold" in font_path.upper():
+                    pdfmetrics.registerFont(TTFont('RussianFont-Bold', font_path))
+                else:
+                    pdfmetrics.registerFont(TTFont('RussianFont', font_path))
+                font_found = True
+                print(f"Шрифт загружен: {font_path}")
+                break
+        
+        if not font_found:
+            # Если шрифт не найден, используем стандартный с кодировкой UTF-8
+            print("Системный шрифт не найден, использую стандартный")
+            return False
+        
+        return True
+        
+    except Exception as e:
+        print(f"Ошибка загрузки шрифта: {e}")
+        return False
 
-# Для работы без полного шрифта, используем стандартные шрифты reportlab
-# Они корректно работают с кириллицей
+# Регистрируем шрифт при загрузке
+try:
+    register_russian_font()
+    RUSSIAN_FONT_AVAILABLE = True
+except:
+    RUSSIAN_FONT_AVAILABLE = False
 
 def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
     """Генерирует один PDF со всеми выбранными маршрутами"""
@@ -146,14 +181,23 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
     
     styles = getSampleStyleSheet()
     
-    # Стили со стандартными шрифтами (поддерживают кириллицу)
+    # Выбираем шрифт для русского языка
+    if RUSSIAN_FONT_AVAILABLE:
+        font_name = 'RussianFont'
+        font_name_bold = 'RussianFont-Bold'
+    else:
+        # Fallback - используем Helvetica с кодировкой UTF-8
+        font_name = 'Helvetica'
+        font_name_bold = 'Helvetica-Bold'
+    
+    # Стили с поддержкой русского языка
     title_style = ParagraphStyle(
         'MainTitle',
         parent=styles['Normal'],
         fontSize=16,
-        alignment=1,  # Центр
+        alignment=1,
         spaceAfter=15,
-        fontName='Helvetica-Bold'
+        fontName=font_name_bold
     )
     
     header_style = ParagraphStyle(
@@ -162,7 +206,7 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
         fontSize=10,
         alignment=0,
         spaceAfter=6,
-        fontName='Helvetica'
+        fontName=font_name
     )
     
     bold_style = ParagraphStyle(
@@ -171,7 +215,7 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
         fontSize=10,
         alignment=0,
         spaceAfter=6,
-        fontName='Helvetica-Bold'
+        fontName=font_name_bold
     )
     
     cell_style = ParagraphStyle(
@@ -179,15 +223,15 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
         parent=styles['Normal'],
         fontSize=8,
         alignment=0,
-        fontName='Helvetica'
+        fontName=font_name
     )
     
     cell_center_style = ParagraphStyle(
         'CellCenterStyle',
         parent=styles['Normal'],
         fontSize=8,
-        alignment=1,  # Центр
-        fontName='Helvetica'
+        alignment=1,
+        fontName=font_name
     )
     
     elements = []
@@ -225,7 +269,7 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
         elements.append(Paragraph(f"• {summary}", header_style))
     elements.append(Spacer(1, 10))
     
-    # Строка с коробками (оставляем пустое поле для заполнения)
+    # Строка с коробками
     elements.append(Paragraph(
         f"<b>Водитель {driver} получил всего __________ коробов для {total_stores} магазинов</b>",
         bold_style
@@ -271,7 +315,7 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
     table.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2c3e50')),
         ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('FONTNAME', (0,0), (-1,0), font_name_bold),
         ('FONTSIZE', (0,0), (-1,0), 8),
         ('BACKGROUND', (0,1), (-1,-1), colors.white),
         ('GRID', (0,0), (-1,-1), 0.5, colors.black),
