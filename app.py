@@ -45,9 +45,15 @@ st.set_page_config(
 SHEET_ID = "1hKZ8ggNLW-OY1bV8xAW7PKl50Fof2co86oxGK92YPAA"
 SHEET_NAME = "Маршруты"
 
-# Session state для контроля отгрузки
+# Инициализация session state
 if 'shipment_completed' not in st.session_state:
     st.session_state.shipment_completed = False
+
+if 'pdf_file' not in st.session_state:
+    st.session_state.pdf_file = None
+
+if 'selected_routes' not in st.session_state:
+    st.session_state.selected_routes = []
 
 # ---------------- CSS ----------------
 
@@ -187,15 +193,6 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
         spaceAfter=4
     )
     
-    styleHeader = ParagraphStyle(
-        'CustomHeader',
-        parent=styles['Normal'],
-        fontName='HYSMyeongJo-Medium',
-        fontSize=9,
-        leading=11,
-        alignment=1
-    )
-    
     styleCell = ParagraphStyle(
         'CustomCell',
         parent=styles['Normal'],
@@ -221,7 +218,7 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
     elements.append(title)
     elements.append(Spacer(1, 6))
     
-    # ИНФОРМАЦИЯ (рамка с информацией)
+    # ИНФОРМАЦИЯ
     info_text = f"""
     <b>Маршрут(ы):</b> {routes_text}<br/>
     <b>Дата:</b> {datetime.now().strftime('%d.%m.%Y')}<br/>
@@ -266,13 +263,13 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
             Paragraph(address, styleCell),
             Paragraph(route_name, styleCell),
             Paragraph(plomb, styleCell),
-            Paragraph("_________________", styleCell),
-            Paragraph("_________________", styleCell),
-            Paragraph("_________________", styleCell),
-            Paragraph("_________________", styleCell)
+            Paragraph("___________", styleCell),
+            Paragraph("___________", styleCell),
+            Paragraph("___________", styleCell),
+            Paragraph("___________", styleCell)
         ])
 
-    # Ширина колонок (точно подогнано под A4 landscape)
+    # Ширина колонок
     table = Table(
         table_data,
         colWidths=[
@@ -433,27 +430,43 @@ if not st.session_state.shipment_completed:
         
         st.session_state.pdf_file = pdf_file
         st.session_state.shipment_completed = True
+        st.session_state.selected_routes = selected_routes
         st.rerun()
 
 # Скачивание PDF
-else:
-    st.success("✅ Маршруты успешно отгружены!")
+elif st.session_state.shipment_completed and st.session_state.pdf_file:
+    st.success(f"✅ Маршруты {', '.join(st.session_state.selected_routes)} успешно отгружены!")
     
-    with open(st.session_state.pdf_file, "rb") as f:
-        st.download_button(
-            label="📄 Скачать маршрутный лист (PDF)",
-            data=f,
-            file_name=f"Маршрутный_лист_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-            mime="application/pdf"
-        )
+    # Проверяем существует ли файл
+    if os.path.exists(st.session_state.pdf_file):
+        with open(st.session_state.pdf_file, "rb") as f:
+            st.download_button(
+                label="📄 Скачать маршрутный лист (PDF)",
+                data=f,
+                file_name=f"Маршрутный_лист_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                mime="application/pdf"
+            )
+    else:
+        st.error("Файл PDF не найден. Пожалуйста, повторите отгрузку.")
+        if st.button("🔄 Повторить отгрузку"):
+            st.session_state.shipment_completed = False
+            st.session_state.pdf_file = None
+            st.rerun()
     
     st.divider()
     
     if st.button("🔄 Начать новую отгрузку"):
         try:
-            os.unlink(st.session_state.pdf_file)
+            if st.session_state.pdf_file and os.path.exists(st.session_state.pdf_file):
+                os.unlink(st.session_state.pdf_file)
         except:
             pass
         st.session_state.shipment_completed = False
         st.session_state.pdf_file = None
+        st.session_state.selected_routes = []
         st.rerun()
+else:
+    # Если состояние не соответствует, сбрасываем
+    st.session_state.shipment_completed = False
+    st.session_state.pdf_file = None
+    st.rerun()
