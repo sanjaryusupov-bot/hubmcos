@@ -1,5 +1,3 @@
-# app.py
-
 import streamlit as st
 import pandas as pd
 import gspread
@@ -10,18 +8,62 @@ from reportlab.platypus import (
     Table,
     TableStyle,
     Paragraph,
-    Spacer
+    Spacer,
+    PageBreak
 )
 from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.units import mm
+from io import BytesIO
+import plotly.express as px
 
 # ---------------- SETTINGS ----------------
 
 st.set_page_config(
     page_title="Отгрузка маршрутов",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
+
+# Применяем пользовательский CSS для улучшения внешнего вида
+st.markdown("""
+    <style>
+    .stMetric {
+        background-color: #f0f2f6;
+        padding: 15px;
+        border-radius: 10px;
+        text-align: center;
+    }
+    .stButton button {
+        background-color: #4CAF50;
+        color: white;
+        font-weight: bold;
+        font-size: 16px;
+        padding: 10px 20px;
+        border-radius: 8px;
+        border: none;
+        width: 100%;
+    }
+    .stButton button:hover {
+        background-color: #45a049;
+    }
+    .detail-card {
+        background-color: #ffffff;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    .route-header {
+        background-color: #1f77b4;
+        color: white;
+        padding: 10px;
+        border-radius: 8px;
+        margin-top: 10px;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 SHEET_ID = "1hKZ8ggNLW-OY1bV8xAW7PKl50Fof2co86oxGK92YPAA"
 SHEET_NAME = "Маршруты"
@@ -29,7 +71,6 @@ SHEET_NAME = "Маршруты"
 # ---------------- GOOGLE SHEETS ----------------
 
 def connect_sheet():
-
     scope = [
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive"
@@ -41,317 +82,389 @@ def connect_sheet():
     )
 
     client = gspread.authorize(creds)
-
     sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
-
     return sheet
 
 def get_data():
-
     sheet = connect_sheet()
-
     data = sheet.get_all_records()
-
-    return pd.DataFrame(data)
-
-# ---------------- UPDATE ROUTE ----------------
+    df = pd.DataFrame(data)
+    
+    # Проверяем наличие необходимых колонок и добавляем если нет
+    required_columns = ["Статус отгрузки", "Дата отгрузки факт", "Номер машины", "Водитель", "№ пломбы"]
+    for col in required_columns:
+        if col not in df.columns:
+            df[col] = ""
+    
+    # Убеждаемся, что числовые колонки имеют правильный тип
+    if "кол-во штук в заказе" in df.columns:
+        df["кол-во штук в заказе"] = pd.to_numeric(df["кол-во штук в заказе"], errors='coerce').fillna(0)
+    
+    return df
 
 def update_route(route_name, car_number, driver, plomb):
-
     sheet = connect_sheet()
-
     data = sheet.get_all_records()
-
     headers = sheet.row_values(1)
-
+    
     # Создаем колонки если нет
-
-    extra_columns = [
-        "Номер машины",
-        "Водитель",
-        "№ пломбы"
-    ]
-
+    extra_columns = ["Номер машины", "Водитель", "№ пломбы"]
     current_headers = headers.copy()
-
+    
     for col_name in extra_columns:
-
         if col_name not in current_headers:
-
-            sheet.update_cell(
-                1,
-                len(current_headers) + 1,
-                col_name
-            )
-
+            sheet.update_cell(1, len(current_headers) + 1, col_name)
             current_headers.append(col_name)
-
+    
     headers = sheet.row_values(1)
-
+    
     status_col = headers.index("Статус отгрузки") + 1
     fact_col = headers.index("Дата отгрузки факт") + 1
     car_col = headers.index("Номер машины") + 1
     driver_col = headers.index("Водитель") + 1
     plomb_col = headers.index("№ пломбы") + 1
-
+    
     for idx, row in enumerate(data, start=2):
+        if str(row.get("Номер маршрута", "")) == str(route_name):
+            sheet.update_cell(idx, status_col, "ОТГРУЖЕН")
+            sheet.update_cell(idx, fact_col, datetime.now().strftime("%d.%m.%Y %H:%M"))
+            sheet.update_cell(idx, car_col, car_number)
+            sheet.update_cell(idx, driver_col, driver)
+            sheet.update_cell(idx, plomb_col, plomb)
+            break
 
-        if row["Номер маршрута"] == route_name:
+# ---------------- PDF GENERATION ----------------
 
-            sheet.update_cell(
-                idx,
-                status_col,
-                "ОТГРУЖЕН"
-            )
-
-            sheet.update_cell(
-                idx,
-                fact_col,
-                datetime.now().strftime("%d.%m.%Y %H:%M")
-            )
-
-            sheet.update_cell(
-                idx,
-                car_col,
-                car_number
-            )
-
-            sheet.update_cell(
-                idx,
-                driver_col,
-                driver
-            )
-
-            sheet.update_cell(
-                idx,
-                plomb_col,
-                plomb
-            )
-
-# ---------------- PDF ----------------
-
-def generate_pdf(df, route, driver, car, plomb):
-
-    filename = f"{route}.pdf"
-
+def generate_pdf(route_df, route, driver, car, plomb):
+    buffer = BytesIO()
+    
+    # Используем альбомную ориентацию для лучшего отображения таблицы
     doc = SimpleDocTemplate(
-        filename,
-        pagesize=A4
+        buffer,
+        pagesize=landscape(A4),
+        rightMargin=10*mm,
+        leftMargin=10*mm,
+        topMargin=15*mm,
+        bottomMargin=15*mm
     )
-
+    
     styles = getSampleStyleSheet()
-
+    
+    # Создаем стиль для заголовка
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Title'],
+        fontSize=16,
+        alignment=1,  # Центрирование
+        spaceAfter=20
+    )
+    
+    header_style = ParagraphStyle(
+        'HeaderStyle',
+        parent=styles['Normal'],
+        fontSize=10,
+        alignment=0,
+        spaceAfter=5
+    )
+    
     elements = []
-
-    total_boxes = df["кол-во штук в заказе"].sum()
-
+    
+    total_boxes = int(route_df["кол-во штук в заказе"].sum())
+    stores_count = len(route_df)
+    
+    # Заголовок маршрутного листа
     title = Paragraph(
-        f"""
-        <b>МАРШРУТНЫЙ ЛИСТ</b><br/><br/>
-        Маршрут: {route}<br/>
-        Водитель: {driver}<br/>
-        Машина: {car}<br/>
-        № пломбы: {plomb}<br/>
-        Дата: {datetime.now().strftime("%d.%m.%Y %H:%M")}<br/>
-        Магазинов: {len(df)}<br/>
-        Коробок: {total_boxes}<br/><br/>
-        """,
-        styles["Title"]
+        "<b><font size=14>МАРШРУТНЫЙ ЛИСТ</font></b>",
+        title_style
     )
-
     elements.append(title)
-
-    data = [[
-        "Заказ",
-        "Магазин",
-        "Адрес",
-        "Маршрут",
-        "Пломба",
-        "Коробок выдано",
-        "Получено",
-        "Подпись"
-    ]]
-
-    for _, row in df.iterrows():
-
-        data.append([
-            row["№ заказа"],
-            row["Название магазина"],
-            row["Адрес магазина"],
-            row["Номер маршрута"],
-            plomb,
-            row["кол-во штук в заказе"],
-            "",
-            ""
-        ])
-
-    table = Table(data)
-
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
-        ('GRID', (0,0), (-1,-1), 1, colors.black),
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,-1), 8),
-        ('BOTTOMPADDING', (0,0), (-1,0), 8),
+    elements.append(Spacer(1, 10))
+    
+    # Информация об отгрузке
+    header_data = [
+        ["Маршрут:", route],
+        ["Водитель:", driver],
+        ["А/м гос номер:", car],
+        ["№ пломбы:", plomb],
+        ["Дата отгрузки:", datetime.now().strftime("%d.%m.%Y %H:%M")],
+        ["Количество магазинов:", str(stores_count)],
+        ["Всего коробок:", str(total_boxes)]
+    ]
+    
+    header_table = Table(header_data, colWidths=[50*mm, 80*mm])
+    header_table.setStyle(TableStyle([
+        ('FONTNAME', (0,0), (-1,-1), 'Helvetica'),
+        ('FONTSIZE', (0,0), (-1,-1), 10),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('LEFTPADDING', (0,0), (-1,-1), 5),
+        ('RIGHTPADDING', (0,0), (-1,-1), 5),
+        ('TOPPADDING', (0,0), (-1,-1), 3),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
     ]))
-
+    elements.append(header_table)
+    elements.append(Spacer(1, 15))
+    
+    # Данные таблицы - заголовки
+    table_data = [[
+        Paragraph("<b>№ заказа</b>", styles['Normal']),
+        Paragraph("<b>Магазин</b>", styles['Normal']),
+        Paragraph("<b>Адрес</b>", styles['Normal']),
+        Paragraph("<b>Коробок выдано</b>", styles['Normal']),
+        Paragraph("<b>Коробок получено</b>", styles['Normal']),
+        Paragraph("<b>Подпись и печать</b>", styles['Normal'])
+    ]]
+    
+    # Заполнение данными
+    for _, row in route_df.iterrows():
+        table_data.append([
+            Paragraph(str(row.get("№ заказа", "")), styles['Normal']),
+            Paragraph(str(row.get("Название магазина", "")), styles['Normal']),
+            Paragraph(str(row.get("Адрес магазина", "")), styles['Normal']),
+            Paragraph(str(int(row.get("кол-во штук в заказе", 0))), styles['Normal']),
+            Paragraph("_________", styles['Normal']),
+            Paragraph("_________________________", styles['Normal'])
+        ])
+    
+    # Настройка ширины колонок
+    col_widths = [35*mm, 40*mm, 55*mm, 25*mm, 25*mm, 30*mm]
+    
+    table = Table(table_data, colWidths=col_widths, repeatRows=1)
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1f77b4')),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,0), 9),
+        ('BACKGROUND', (0,1), (-1,-1), colors.white),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+        ('ALIGN', (3,0), (4,-1), 'CENTER'),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('FONTSIZE', (0,1), (-1,-1), 8),
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+        ('LEFTPADDING', (0,0), (-1,-1), 5),
+        ('RIGHTPADDING', (0,0), (-1,-1), 5),
+    ]))
+    
     elements.append(table)
-
-    elements.append(Spacer(1, 20))
-
-    sign = Paragraph(
-        """
-        Подпись водителя ___________________________<br/><br/>
-        Подпись принимающей стороны ___________________________
-        """,
-        styles["Normal"]
-    )
-
-    elements.append(sign)
-
+    elements.append(Spacer(1, 25))
+    
+    # Подписи водителя и принимающей стороны
+    styles.add(ParagraphStyle(
+        name='SignatureStyle',
+        parent=styles['Normal'],
+        fontSize=10,
+        alignment=0,
+        spaceBefore=5,
+        spaceAfter=5
+    ))
+    
+    signature_data = [
+        ["Подпись водителя:", "___________________________", "Дата:", "_____________"],
+        ["Подпись принимающей стороны:", "___________________________", "Печать:", "_____________"],
+    ]
+    
+    signature_table = Table(signature_data, colWidths=[40*mm, 50*mm, 25*mm, 35*mm])
+    signature_table.setStyle(TableStyle([
+        ('FONTNAME', (0,0), (-1,-1), 'Helvetica'),
+        ('FONTSIZE', (0,0), (-1,-1), 9),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('LEFTPADDING', (0,0), (-1,-1), 5),
+    ]))
+    elements.append(signature_table)
+    
+    # Строим PDF
     doc.build(elements)
-
-    return filename
+    buffer.seek(0)
+    
+    return buffer
 
 # ---------------- UI ----------------
 
-st.title("🚚 Отгрузка маршрутов")
+st.title("🚚 Система управления отгрузкой маршрутов")
+st.markdown("---")
 
 try:
-
     df = get_data()
-
 except Exception as e:
-
-    st.error("Ошибка подключения Google Sheets")
+    st.error(f"❌ Ошибка подключения к Google Sheets: {str(e)}")
     st.stop()
 
-# ---------------- FILTERS ----------------
-
-not_shipped = df[
-    df["Статус отгрузки"] != "ОТГРУЖЕН"
-]
-
-shipped = df[
-    df["Статус отгрузки"] == "ОТГРУЖЕН"
-]
+# Фильтрация данных
+if "Статус отгрузки" in df.columns:
+    not_shipped = df[df["Статус отгрузки"] != "ОТГРУЖЕН"]
+    shipped = df[df["Статус отгрузки"] == "ОТГРУЖЕН"]
+else:
+    not_shipped = df.copy()
+    shipped = pd.DataFrame()
 
 # ---------------- METRICS ----------------
+st.subheader("📊 Сводная информация")
 
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5 = st.columns(5)
 
-col1.metric(
-    "Не отгружено",
-    not_shipped["Номер маршрута"].nunique()
-)
+with col1:
+    st.metric("🚫 Не отгружено маршрутов", not_shipped["Номер маршрута"].nunique() if len(not_shipped) > 0 else 0)
 
-col2.metric(
-    "Отгружено",
-    shipped["Номер маршрута"].nunique()
-)
+with col2:
+    st.metric("✅ Отгружено маршрутов", shipped["Номер маршрута"].nunique() if len(shipped) > 0 else 0)
 
-col3.metric(
-    "Точек",
-    len(not_shipped)
-)
+with col3:
+    st.metric("📍 Всего точек доставки", len(not_shipped))
 
-col4.metric(
-    "Коробок",
-    int(not_shipped["кол-во штук в заказе"].sum())
-)
+with col4:
+    total_boxes = not_shipped["кол-во штук в заказе"].sum() if len(not_shipped) > 0 else 0
+    st.metric("📦 Всего коробок к отгрузке", int(total_boxes))
 
-st.divider()
+with col5:
+    completion_rate = (shipped["Номер маршрута"].nunique() / df["Номер маршрута"].nunique() * 100) if len(df) > 0 else 0
+    st.metric("📈 Прогресс отгрузки", f"{completion_rate:.1f}%")
 
-# ---------------- FORM ----------------
+st.markdown("---")
 
-st.subheader("🚛 Данные отгрузки")
-
-car_number = st.text_input(
-    "Номер машины"
-)
-
-driver = st.text_input(
-    "Водитель"
-)
-
-plomb = st.text_input(
-    "№ пломбы"
-)
-
-routes = sorted(
-    not_shipped["Номер маршрута"].dropna().unique()
-)
-
-selected_routes = st.multiselect(
-    "Выберите маршруты",
-    routes
-)
-
-# ---------------- DETAILS ----------------
-
-if selected_routes:
-
-    details_df = not_shipped[
-        not_shipped["Номер маршрута"].isin(selected_routes)
-    ]
-
-    st.subheader("📦 Детали маршрутов")
-
-    st.dataframe(
-        details_df[
-            [
-                "№ заказа",
-                "Название магазина",
-                "Адрес магазина",
-                "Номер маршрута",
-                "кол-во штук в заказе"
-            ]
-        ],
-        use_container_width=True
-    )
-
-# ---------------- SHIP BUTTON ----------------
-
-if st.button("✅ ОТГРУЗИТЬ"):
-
-    if not car_number:
-
-        st.warning("Введите номер машины")
-        st.stop()
-
-    if not selected_routes:
-
-        st.warning("Выберите маршрут")
-        st.stop()
-
-    for route in selected_routes:
-
-        route_df = df[
-            df["Номер маршрута"] == route
-        ]
-
-        update_route(
-            route,
-            car_number,
-            driver,
-            plomb
-        )
-
-        pdf_file = generate_pdf(
-            route_df,
-            route,
-            driver,
-            car_number,
-            plomb
-        )
-
-        with open(pdf_file, "rb") as f:
-
-            st.download_button(
-                label=f"📄 Скачать PDF {route}",
-                data=f,
-                file_name=pdf_file,
-                mime="application/pdf"
+# ---------------- SIDEBAR WITH DETAILS ----------------
+with st.sidebar:
+    st.header("🔍 Детальная информация")
+    
+    # Выбор типа просмотра
+    view_type = st.radio("Показать:", ["Неотгруженные маршруты", "Отгруженные маршруты", "Все маршруты"])
+    
+    if view_type == "Неотгруженные маршруты":
+        display_df = not_shipped
+    elif view_type == "Отгруженные маршруты":
+        display_df = shipped
+    else:
+        display_df = df
+    
+    if len(display_df) > 0:
+        # Группировка по маршрутам
+        route_summary = display_df.groupby("Номер маршрута").agg({
+            "№ заказа": "count",
+            "кол-во штук в заказе": "sum"
+        }).rename(columns={"№ заказа": "Кол-во заказов", "кол-во штук в заказе": "Коробок"})
+        
+        st.dataframe(route_summary, use_container_width=True)
+        
+        # Выбор маршрута для просмотра деталей
+        selected_route = st.selectbox("Выберите маршрут для детализации", route_summary.index)
+        if selected_route:
+            route_details = display_df[display_df["Номер маршрута"] == selected_route]
+            st.markdown("**Состав маршрута:**")
+            st.dataframe(
+                route_details[["№ заказа", "Название магазина", "Адрес магазина", "кол-во штук в заказе"]],
+                use_container_width=True,
+                hide_index=True
             )
 
-    st.success("Маршруты успешно отгружены")
+st.markdown("---")
+
+# ---------------- SHIPMENT FORM ----------------
+st.subheader("🚛 Отгрузка маршрутов")
+
+# Информация о водителе и транспорте
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    car_number = st.text_input("🚐 Номер машины", placeholder="например: А123ВС77", help="Введите государственный номер автомобиля")
+
+with col2:
+    driver = st.text_input("👤 Водитель", placeholder="Фамилия И.О.", help="ФИО водителя")
+
+with col3:
+    plomb = st.text_input("🔒 № пломбы", placeholder="номер пломбы", help="Номер установленной пломбы")
+
+st.markdown("---")
+
+# Выбор маршрутов
+not_shipped_routes = sorted(not_shipped["Номер маршрута"].dropna().unique()) if len(not_shipped) > 0 else []
+
+if len(not_shipped_routes) > 0:
+    st.subheader("📋 Выберите маршруты для отгрузки")
+    
+    # Используем мультиселект с чекбоксами в виде карточек
+    selected_routes = st.multiselect(
+        "Маршруты, готовые к отгрузке:",
+        options=not_shipped_routes,
+        format_func=lambda x: f"🗺️ Маршрут {x}"
+    )
+    
+    # Показываем детали выбранных маршрутов
+    if selected_routes:
+        st.markdown("### 📦 Детали выбранных маршрутов")
+        
+        details_df = not_shipped[not_shipped["Номер маршрута"].isin(selected_routes)]
+        
+        # Группируем по маршрутам для лучшего отображения
+        for route in selected_routes:
+            route_data = details_df[details_df["Номер маршрута"] == route]
+            total_boxes_route = int(route_data["кол-во штук в заказе"].sum())
+            
+            with st.expander(f"🗺️ Маршрут {route} - {len(route_data)} магазинов, {total_boxes_route} коробок", expanded=True):
+                st.dataframe(
+                    route_data[["№ заказа", "Название магазина", "Адрес магазина", "кол-во штук в заказе"]],
+                    use_container_width=True,
+                    hide_index=True
+                )
+        
+        # Кнопка отгрузки
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            ship_button = st.button("✅ ОТГРУЗИТЬ ВЫБРАННЫЕ МАРШРУТЫ", type="primary", use_container_width=True)
+        
+        if ship_button:
+            if not car_number:
+                st.error("❌ Пожалуйста, введите номер машины!")
+                st.stop()
+            
+            if not driver:
+                st.error("❌ Пожалуйста, введите ФИО водителя!")
+                st.stop()
+            
+            if not plomb:
+                st.warning("⚠️ Рекомендуется указать номер пломбы!")
+            
+            success_count = 0
+            pdf_files = []
+            
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            for i, route in enumerate(selected_routes):
+                status_text.text(f"Отгрузка маршрута {route}...")
+                
+                route_df = df[df["Номер маршрута"] == route]
+                
+                # Обновляем Google Sheets
+                update_route(route, car_number, driver, plomb)
+                
+                # Генерируем PDF
+                pdf_buffer = generate_pdf(route_df, route, driver, car_number, plomb)
+                pdf_files.append((route, pdf_buffer))
+                
+                success_count += 1
+                progress_bar.progress((i + 1) / len(selected_routes))
+            
+            status_text.text("✅ Отгрузка завершена!")
+            
+            st.success(f"✅ Успешно отгружено {success_count} маршрутов!")
+            
+            # Предлагаем скачать PDF
+            st.subheader("📄 Скачать маршрутные листы")
+            
+            for route, pdf_buffer in pdf_files:
+                st.download_button(
+                    label=f"📄 Скачать маршрутный лист {route}",
+                    data=pdf_buffer,
+                    file_name=f"Маршрутный_лист_{route}_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                    mime="application/pdf",
+                    key=f"pdf_{route}"
+                )
+            
+            # Кнопка для обновления страницы
+            if st.button("🔄 Обновить данные", key="refresh"):
+                st.rerun()
+else:
+    st.info("🎉 Все маршруты отгружены! Отличная работа!", icon="🎉")
+
+# ---------------- FOOTER ----------------
+st.markdown("---")
+st.caption(f"Последнее обновление: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}")
