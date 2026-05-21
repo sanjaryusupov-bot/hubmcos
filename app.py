@@ -16,7 +16,8 @@ from reportlab.platypus import (
     TableStyle,
     Paragraph,
     Spacer,
-    HRFlowable
+    HRFlowable,
+    PageBreak
 )
 
 from reportlab.lib import colors
@@ -164,10 +165,10 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
     doc = SimpleDocTemplate(
         filename,
         pagesize=landscape(A4),
-        leftMargin=3*mm,      # Минимальный отступ
-        rightMargin=3*mm,     # Минимальный отступ
-        topMargin=12*mm,
-        bottomMargin=12*mm
+        leftMargin=2*mm,      # Минимальный отступ
+        rightMargin=2*mm,     # Минимальный отступ
+        topMargin=10*mm,
+        bottomMargin=15*mm
     )
 
     styles = getSampleStyleSheet()
@@ -273,8 +274,8 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
     # Данные - все ячейки пустые для заполнения
     for _, row in all_data.iterrows():
         order_num = f"<b>{row['№ заказа']}</b>"
-        shop_name = str(row["Название магазина"])[:55]
-        address = str(row["Адрес магазина"])[:70]
+        shop_name = str(row["Название магазина"])[:60]
+        address = str(row["Адрес магазина"])[:80]
         
         table_data.append([
             Paragraph(order_num, styleBold),
@@ -291,14 +292,14 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
     table = Table(
         table_data,
         colWidths=[
-            18*mm,  # № заказа
-            45*mm,  # Магазин (максимально растянут)
-            65*mm,  # Адрес (максимально растянут)
-            20*mm,  # Пломба
-            22*mm,  # Выдано коробок
-            22*mm,  # Получено коробок
-            40*mm,  # Подпись, печать, комментарии
-            28*mm   # Подпись водителя
+            16*mm,  # № заказа
+            50*mm,  # Магазин (еще растянут)
+            72*mm,  # Адрес (максимально растянут)
+            18*mm,  # Пломба
+            20*mm,  # Выдано коробок
+            20*mm,  # Получено коробок
+            42*mm,  # Подпись, печать, комментарии (еще растянут)
+            30*mm   # Подпись водителя (еще растянут)
         ],
         repeatRows=1
     )
@@ -335,23 +336,29 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
     ]))
 
     elements.append(table)
-    elements.append(Spacer(1, 12))
+    elements.append(Spacer(1, 25))  # Увеличен отступ перед подписями
     
-    # ПОДПИСИ
+    # ПОДПИСИ - спущены вниз с большим отступом
     styleSignatures = ParagraphStyle(
         'CustomSignatures',
         parent=styles['Normal'],
         fontName='HYSMyeongJo-Medium',
         fontSize=9,
-        leading=12,
+        leading=14,
         textColor=colors.black
     )
     
+    # Добавляем еще один Spacer для дополнительного спуска вниз
+    elements.append(Spacer(1, 15))
+    
     signatures = Paragraph(
-        "<b>Подпись водителя:</b> _________________________ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>Подпись ответственного:</b> _________________________",
+        "<b>Подпись водителя:</b> _________________________ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>Подпись ответственного:</b> _________________________",
         styleSignatures
     )
     elements.append(signatures)
+    
+    # Добавляем дополнительное пространство после подписей
+    elements.append(Spacer(1, 10))
 
     # Строим PDF
     doc.build(elements)
