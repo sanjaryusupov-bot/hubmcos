@@ -12,10 +12,8 @@ from reportlab.platypus import (
 )
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.units import mm
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
 from io import BytesIO
 import random
 
@@ -119,26 +117,28 @@ def update_route(route_name, car_number, driver, plomb):
 
 # ---------------- PDF GENERATION ----------------
 
-def generate_pdf(route_df, route, driver, car, plomb):
+def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
+    """Генерирует один PDF со всеми выбранными маршрутами"""
     buffer = BytesIO()
     
+    # Используем альбомную ориентацию для лучшего отображения
     doc = SimpleDocTemplate(
         buffer,
-        pagesize=A4,
-        rightMargin=15*mm,
-        leftMargin=15*mm,
+        pagesize=landscape(A4),
+        rightMargin=10*mm,
+        leftMargin=10*mm,
         topMargin=15*mm,
         bottomMargin=15*mm
     )
     
     styles = getSampleStyleSheet()
     
-    # Стили для нормального отображения
+    # Базовые стили
     title_style = ParagraphStyle(
         'MainTitle',
         parent=styles['Normal'],
-        fontSize=18,
-        alignment=1,  # Центр
+        fontSize=16,
+        alignment=1,
         spaceAfter=15,
         fontName='Helvetica-Bold'
     )
@@ -146,16 +146,25 @@ def generate_pdf(route_df, route, driver, car, plomb):
     header_style = ParagraphStyle(
         'HeaderStyle',
         parent=styles['Normal'],
-        fontSize=11,
+        fontSize=10,
         alignment=0,
-        spaceAfter=8,
+        spaceAfter=6,
         fontName='Helvetica'
+    )
+    
+    bold_style = ParagraphStyle(
+        'BoldStyle',
+        parent=styles['Normal'],
+        fontSize=10,
+        alignment=0,
+        spaceAfter=6,
+        fontName='Helvetica-Bold'
     )
     
     cell_style = ParagraphStyle(
         'CellStyle',
         parent=styles['Normal'],
-        fontSize=9,
+        fontSize=8,
         alignment=0,
         fontName='Helvetica'
     )
@@ -163,67 +172,76 @@ def generate_pdf(route_df, route, driver, car, plomb):
     cell_center_style = ParagraphStyle(
         'CellCenterStyle',
         parent=styles['Normal'],
-        fontSize=9,
-        alignment=1,  # Центр
+        fontSize=8,
+        alignment=1,
         fontName='Helvetica'
     )
     
     elements = []
     
-    # Случайный номер
+    # Случайный номер документа
     random_num = random.randint(10000, 99999)
     
-    total_boxes = int(route_df["кол-во штук в заказе"].sum())
-    stores_count = len(route_df)
+    # Общая статистика
+    total_boxes = int(all_routes_df["кол-во штук в заказе"].sum())
+    total_stores = len(all_routes_df)
+    unique_routes = all_routes_df["Номер маршрута"].nunique()
     
-    # Заголовок
+    # ЗАГОЛОВОК
     elements.append(Paragraph("МАРШРУТНЫЙ ЛИСТ", title_style))
     elements.append(Spacer(1, 5))
     
-    # Номер
+    # Номер документа
     elements.append(Paragraph(f"№ {random_num}", header_style))
     elements.append(Spacer(1, 10))
     
-    # Информация о водителе и машине
-    info_lines = [
-        f"Водитель: {driver}",
-        f"А/м гос номер: {car}",
-        f"Дата: {datetime.now().strftime('%d.%m.%Y')}",
-        f"№ пломбы: {plomb}"
-    ]
+    # Информация о рейсе
+    elements.append(Paragraph(f"<b>Водитель:</b> {driver}", header_style))
+    elements.append(Paragraph(f"<b>А/м гос номер:</b> {car}", header_style))
+    elements.append(Paragraph(f"<b>Дата:</b> {datetime.now().strftime('%d.%m.%Y')}", header_style))
+    elements.append(Paragraph(f"<b>№ пломбы:</b> {plomb}", header_style))
+    elements.append(Spacer(1, 10))
     
-    for line in info_lines:
-        elements.append(Paragraph(line, header_style))
+    # Сводка по маршрутам
+    routes_summary = []
+    for route in routes_list:
+        route_data = all_routes_df[all_routes_df["Номер маршрута"] == route]
+        routes_summary.append(f"Маршрут {route} ({len(route_data)} магазинов, {int(route_data['кол-во штук в заказе'].sum())} коробок)")
     
+    elements.append(Paragraph("<b>Маршруты в рейсе:</b>", bold_style))
+    for summary in routes_summary:
+        elements.append(Paragraph(f"• {summary}", header_style))
     elements.append(Spacer(1, 10))
     
     # Строка с коробками
     elements.append(Paragraph(
-        f"Водитель {driver} получил всего __________ коробов для {stores_count} магазинов",
+        f"<b>Водитель {driver} получил всего __________ коробов для {total_stores} магазинов</b>",
         header_style
     ))
     elements.append(Spacer(1, 15))
     
-    # Заголовки таблицы
-    table_data = []
-    
-    # Шапка таблицы
-    headers = [
-        "№ п/п", "Заказ", "Магазин", "Адрес",
-        "№ маршрута", "№ пломбы", "Коробов выдано",
+    # ТАБЛИЦА
+    # Заголовки
+    table_headers = [
+        "№", "Заказ", "Магазин", "Адрес",
+        "Маршрут", "Пломба", "Коробов выдано",
         "Коробов получено", "Подпись и печать", "Подпись водителя"
     ]
     
-    table_data.append([Paragraph(h, cell_center_style) for h in headers])
+    table_data = [[Paragraph(h, cell_center_style) for h in table_headers]]
     
-    # Данные
-    for idx, (_, row) in enumerate(route_df.iterrows(), start=1):
+    # Заполнение данными
+    for idx, (_, row) in enumerate(all_routes_df.iterrows(), start=1):
+        # Ограничиваем длину текста
+        shop_name = str(row.get("Название магазина", ""))[:35]
+        address = str(row.get("Адрес магазина", ""))[:45]
+        
         table_data.append([
             Paragraph(str(idx), cell_center_style),
             Paragraph(str(row.get("№ заказа", "")), cell_style),
-            Paragraph(str(row.get("Название магазина", ""))[:40], cell_style),
-            Paragraph(str(row.get("Адрес магазина", ""))[:50], cell_style),
-            Paragraph(str(route), cell_center_style),
+            Paragraph(shop_name, cell_style),
+            Paragraph(address, cell_style),
+            Paragraph(str(row.get("Номер маршрута", "")), cell_center_style),
             Paragraph(str(plomb), cell_center_style),
             Paragraph(str(int(row.get("кол-во штук в заказе", 0))), cell_center_style),
             Paragraph("________", cell_center_style),
@@ -231,15 +249,15 @@ def generate_pdf(route_df, route, driver, car, plomb):
             Paragraph("_________", cell_center_style)
         ])
     
-    # Ширина колонок
+    # Ширина колонок (в мм)
     col_widths = [
-        12*mm, 20*mm, 30*mm, 40*mm,
-        18*mm, 18*mm, 20*mm, 22*mm, 22*mm, 22*mm
+        10*mm, 20*mm, 35*mm, 45*mm,
+        18*mm, 18*mm, 20*mm, 20*mm, 22*mm, 22*mm
     ]
     
     table = Table(table_data, colWidths=col_widths, repeatRows=1)
     table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.grey),
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2c3e50')),
         ('TEXTCOLOR', (0,0), (-1,0), colors.white),
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
         ('FONTSIZE', (0,0), (-1,0), 8),
@@ -247,28 +265,28 @@ def generate_pdf(route_df, route, driver, car, plomb):
         ('GRID', (0,0), (-1,-1), 0.5, colors.black),
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('FONTSIZE', (0,1), (-1,-1), 8),
-        ('TOPPADDING', (0,0), (-1,-1), 4),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('FONTSIZE', (0,1), (-1,-1), 7),
+        ('TOPPADDING', (0,0), (-1,-1), 3),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+        ('LEFTPADDING', (0,0), (-1,-1), 2),
+        ('RIGHTPADDING', (0,0), (-1,-1), 2),
     ]))
     
     elements.append(table)
+    elements.append(Spacer(1, 15))
+    
+    # ИТОГО
+    elements.append(Paragraph(f"<b>Итого коробов по всем маршрутам: {total_boxes}</b>", bold_style))
     elements.append(Spacer(1, 20))
     
-    # Итого
-    elements.append(Paragraph(f"Итого коробов: {total_boxes}", header_style))
-    elements.append(Spacer(1, 30))
-    
-    # Подписи
-    signature_lines = [
-        "Подпись водителя: ___________________________",
-        "Подпись принимающей стороны: ___________________________",
-        "Печать: ___________________________"
-    ]
-    
-    for line in signature_lines:
-        elements.append(Paragraph(line, header_style))
-        elements.append(Spacer(1, 5))
+    # ПОДПИСИ
+    elements.append(Paragraph("Подпись водителя: ___________________________", header_style))
+    elements.append(Spacer(1, 5))
+    elements.append(Paragraph("Подпись принимающей стороны: ___________________________", header_style))
+    elements.append(Spacer(1, 5))
+    elements.append(Paragraph("Печать: ___________________________", header_style))
+    elements.append(Spacer(1, 10))
+    elements.append(Paragraph(f"Дата: {datetime.now().strftime('%d.%m.%Y')}", header_style))
     
     # Строим PDF
     doc.build(elements)
@@ -386,11 +404,17 @@ if len(not_shipped_routes) > 0:
         
         details_df = not_shipped[not_shipped["Номер маршрута"].isin(selected_routes)]
         
+        # Показываем сводку по выбранным маршрутам
+        total_selected_boxes = int(details_df["кол-во штук в заказе"].sum())
+        total_selected_stores = len(details_df)
+        
+        st.info(f"📊 Выбрано {len(selected_routes)} маршрутов | {total_selected_stores} магазинов | {total_selected_boxes} коробок")
+        
         for route in selected_routes:
             route_data = details_df[details_df["Номер маршрута"] == route]
             total_boxes_route = int(route_data["кол-во штук в заказе"].sum())
             
-            with st.expander(f"🗺️ Маршрут {route} - {len(route_data)} магазинов, {total_boxes_route} коробок", expanded=True):
+            with st.expander(f"🗺️ Маршрут {route} - {len(route_data)} магазинов, {total_boxes_route} коробок", expanded=False):
                 st.dataframe(
                     route_data[["№ заказа", "Название магазина", "Адрес магазина", "кол-во штук в заказе"]],
                     use_container_width=True,
@@ -410,42 +434,41 @@ if len(not_shipped_routes) > 0:
                 st.error("❌ Введите ФИО водителя!")
                 st.stop()
             
-            success_count = 0
-            pdf_files = []
+            if not plomb:
+                st.warning("⚠️ Рекомендуется указать номер пломбы!")
             
+            # Получаем данные по выбранным маршрутам
+            selected_data = df[df["Номер маршрута"].isin(selected_routes)]
+            
+            # Обновляем статусы в Google Sheets
             progress_bar = st.progress(0)
             status_text = st.empty()
             
             for i, route in enumerate(selected_routes):
                 status_text.text(f"Отгрузка маршрута {route}...")
-                
-                route_df = df[df["Номер маршрута"] == route]
-                
                 update_route(route, car_number, driver, plomb)
-                
-                pdf_buffer = generate_pdf(route_df, route, driver, car_number, plomb)
-                pdf_files.append((route, pdf_buffer))
-                
-                success_count += 1
                 progress_bar.progress((i + 1) / len(selected_routes))
+            
+            # Генерируем ОДИН PDF со всеми маршрутами
+            status_text.text("Генерация маршрутного листа...")
+            pdf_buffer = generate_pdf(selected_data, selected_routes, driver, car_number, plomb)
             
             status_text.text("✅ Отгрузка завершена!")
             
-            st.success(f"✅ Успешно отгружено {success_count} маршрутов!")
+            st.success(f"✅ Успешно отгружено {len(selected_routes)} маршрутов!")
             
-            st.subheader("📄 Скачать маршрутные листы")
+            # Кнопка скачивания PDF
+            st.subheader("📄 Скачать маршрутный лист")
             
-            cols = st.columns(min(3, len(pdf_files)))
-            for idx, (route, pdf_buffer) in enumerate(pdf_files):
-                with cols[idx % 3]:
-                    st.download_button(
-                        label=f"📄 Маршрут {route}",
-                        data=pdf_buffer,
-                        file_name=f"Маршрутный_лист_{route}.pdf",
-                        mime="application/pdf",
-                        key=f"pdf_{route}"
-                    )
+            st.download_button(
+                label="📄 Скачать маршрутный лист (PDF)",
+                data=pdf_buffer,
+                file_name=f"Маршрутный_лист_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
             
+            # Кнопка для обновления страницы
             if st.button("🔄 Обновить данные", key="refresh"):
                 st.rerun()
 else:
