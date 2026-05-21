@@ -6,6 +6,8 @@ from datetime import datetime
 from io import BytesIO
 import random
 from fpdf import FPDF
+import urllib.request
+import os
 
 # ---------------- SETTINGS ----------------
 
@@ -107,18 +109,8 @@ def update_route(route_name, car_number, driver, plomb):
 
 # ---------------- PDF GENERATION WITH FPDF ----------------
 
-class RussianPDF(FPDF):
-    def __init__(self):
-        super().__init__()
-        # Добавляем шрифт DejaVu (скачиваем если нет)
-        self.add_font('DejaVu', '', '/tmp/DejaVuSans.ttf', uni=True)
-        self.add_font('DejaVu', 'B', '/tmp/DejaVuSans-Bold.ttf', uni=True)
-
 def download_dejavu_fonts():
     """Скачивает шрифты DejaVu для поддержки русского языка"""
-    import urllib.request
-    import os
-    
     fonts = {
         '/tmp/DejaVuSans.ttf': 'https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf',
         '/tmp/DejaVuSans-Bold.ttf': 'https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans-Bold.ttf'
@@ -128,14 +120,22 @@ def download_dejavu_fonts():
         if not os.path.exists(path):
             try:
                 urllib.request.urlretrieve(url, path)
-            except:
-                pass
+            except Exception as e:
+                print(f"Ошибка скачивания шрифта: {e}")
+
+class RussianPDF(FPDF):
+    def __init__(self):
+        super().__init__()
+        # Скачиваем шрифты если их нет
+        download_dejavu_fonts()
+        # Добавляем шрифты
+        if os.path.exists('/tmp/DejaVuSans.ttf'):
+            self.add_font('DejaVu', '', '/tmp/DejaVuSans.ttf', uni=True)
+        if os.path.exists('/tmp/DejaVuSans-Bold.ttf'):
+            self.add_font('DejaVu', 'B', '/tmp/DejaVuSans-Bold.ttf', uni=True)
 
 def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
     """Генерирует PDF с помощью FPDF (отличная поддержка русского языка)"""
-    
-    # Скачиваем шрифты
-    download_dejavu_fonts()
     
     buffer = BytesIO()
     
@@ -144,8 +144,11 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
     pdf.add_page(orientation='L')
     pdf.set_auto_page_break(auto=True, margin=15)
     
-    # Устанавливаем шрифт
-    pdf.set_font('DejaVu', '', 12)
+    # Проверяем, загрузился ли шрифт, если нет - используем стандартный
+    try:
+        pdf.set_font('DejaVu', '', 12)
+    except:
+        pdf.set_font('Helvetica', '', 12)
     
     # Случайный номер
     random_num = random.randint(10000, 99999)
@@ -155,17 +158,22 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
     total_stores = len(all_routes_df)
     
     # ЗАГОЛОВОК
-    pdf.set_font('DejaVu', 'B', 20)
+    try:
+        pdf.set_font('DejaVu', 'B', 20)
+    except:
+        pdf.set_font('Helvetica', 'B', 20)
     pdf.cell(0, 15, 'МАРШРУТНЫЙ ЛИСТ', ln=True, align='C')
     pdf.ln(5)
     
     # Номер
-    pdf.set_font('DejaVu', '', 12)
+    try:
+        pdf.set_font('DejaVu', '', 12)
+    except:
+        pdf.set_font('Helvetica', '', 12)
     pdf.cell(0, 8, f'№ {random_num}', ln=True, align='L')
     pdf.ln(5)
     
     # Информация о рейсе
-    pdf.set_font('DejaVu', '', 11)
     pdf.cell(0, 8, f'Водитель: {driver}', ln=True)
     pdf.cell(0, 8, f'А/м гос номер: {car}', ln=True)
     pdf.cell(0, 8, f'Дата: {datetime.now().strftime("%d.%m.%Y")}', ln=True)
@@ -173,16 +181,26 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
     pdf.ln(5)
     
     # Сводка по маршрутам
-    pdf.set_font('DejaVu', 'B', 11)
+    try:
+        pdf.set_font('DejaVu', 'B', 11)
+    except:
+        pdf.set_font('Helvetica', 'B', 11)
     pdf.cell(0, 8, 'Маршруты в рейсе:', ln=True)
-    pdf.set_font('DejaVu', '', 10)
+    
+    try:
+        pdf.set_font('DejaVu', '', 10)
+    except:
+        pdf.set_font('Helvetica', '', 10)
     for route in routes_list:
         route_data = all_routes_df[all_routes_df["Номер маршрута"] == route]
         pdf.cell(0, 6, f'• Маршрут {route} ({len(route_data)} магазинов, {int(route_data["кол-во штук в заказе"].sum())} коробок)', ln=True)
     pdf.ln(5)
     
     # Строка с коробками
-    pdf.set_font('DejaVu', 'B', 11)
+    try:
+        pdf.set_font('DejaVu', 'B', 11)
+    except:
+        pdf.set_font('Helvetica', 'B', 11)
     pdf.cell(0, 8, f'Водитель {driver} получил всего __________ коробов для {total_stores} магазинов', ln=True)
     pdf.ln(8)
     
@@ -193,7 +211,10 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
     # Заголовки
     headers = ['№', 'Заказ', 'Магазин', 'Адрес', 'Маршрут', 'Пломба', 'Коробов выдано', 'Коробов получено', 'Подпись и печать', 'Подпись водителя']
     
-    pdf.set_font('DejaVu', 'B', 7)
+    try:
+        pdf.set_font('DejaVu', 'B', 7)
+    except:
+        pdf.set_font('Helvetica', 'B', 7)
     pdf.set_fill_color(44, 62, 80)
     pdf.set_text_color(255, 255, 255)
     
@@ -203,7 +224,10 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
     pdf.ln()
     
     # Данные
-    pdf.set_font('DejaVu', '', 7)
+    try:
+        pdf.set_font('DejaVu', '', 7)
+    except:
+        pdf.set_font('Helvetica', '', 7)
     pdf.set_text_color(0, 0, 0)
     pdf.set_fill_color(255, 255, 255)
     
@@ -228,12 +252,18 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
     pdf.ln(8)
     
     # Итого
-    pdf.set_font('DejaVu', 'B', 11)
+    try:
+        pdf.set_font('DejaVu', 'B', 11)
+    except:
+        pdf.set_font('Helvetica', 'B', 11)
     pdf.cell(0, 8, f'Итого коробов по всем маршрутам: {total_boxes}', ln=True)
     pdf.ln(15)
     
     # Подписи
-    pdf.set_font('DejaVu', '', 11)
+    try:
+        pdf.set_font('DejaVu', '', 11)
+    except:
+        pdf.set_font('Helvetica', '', 11)
     pdf.cell(0, 8, 'Подпись водителя: ___________________________', ln=True)
     pdf.cell(0, 8, 'Подпись принимающей стороны: ___________________________', ln=True)
     pdf.cell(0, 8, 'Печать: ___________________________', ln=True)
@@ -284,7 +314,10 @@ with col4:
     st.metric("📦 Всего коробок к отгрузке", int(total_boxes))
 
 with col5:
-    completion_rate = (shipped["Номер маршрута"].nunique() / df["Номер маршрута"].nunique() * 100) if len(df) > 0 else 0
+    if len(df) > 0 and df["Номер маршрута"].nunique() > 0:
+        completion_rate = (shipped["Номер маршрута"].nunique() / df["Номер маршрута"].nunique() * 100)
+    else:
+        completion_rate = 0
     st.metric("📈 Прогресс отгрузки", f"{completion_rate:.1f}%")
 
 st.markdown("---")
@@ -367,7 +400,7 @@ if len(not_shipped_routes) > 0:
             
             with st.expander(f"🗺️ Маршрут {route} - {len(route_data)} магазинов, {total_boxes_route} коробок", expanded=False):
                 st.dataframe(
-                    route_data[["№ заказа", "Название магасина", "Адрес магазина", "кол-во штук в заказе"]],
+                    route_data[["№ заказа", "Название магазина", "Адрес магазина", "кол-во штук в заказе"]],
                     use_container_width=True,
                     hide_index=True
                 )
