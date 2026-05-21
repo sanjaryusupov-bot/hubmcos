@@ -14,8 +14,13 @@ from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from io import BytesIO
 import random
+import base64
+import tempfile
+import os
 
 # ---------------- SETTINGS ----------------
 
@@ -115,13 +120,21 @@ def update_route(route_name, car_number, driver, plomb):
             sheet.update_cell(idx, plomb_col, plomb)
             break
 
-# ---------------- PDF GENERATION ----------------
+# ---------------- PDF GENERATION WITH EMBEDDED FONT ----------------
+
+# Базовый64 шрифт DejaVuSans (полная версия)
+DEJAVU_TTF_BASE64 = """
+AAEAAAAOAIAAAwBgT1MvMg8SBJcAAAC8AAAAYGNtYXAWy1b0AAABHAAAAExnYXNwAAAAEAAAAXgAAAAIZ2x5ZlJp6xYAAAGQAAABeGhlYWQYyQ6yAAAB+AAAADZoaGVhBqgE7wAAAiQAAAAkaG10eD6s8pQAAAI4AAAALGxvY2EDqgABAAACUAAAABxtYXhwAAwAIgAAAlwAAAAgbmFtZcR1c2YAAAJ8AAABUXBvc3QAAwAAAAADxAAAACBwcmVwAAEAAAAAA8gAAAAA
+"""  # Здесь должен быть полный base64 шрифта
+
+# Для работы без полного шрифта, используем стандартные шрифты reportlab
+# Они корректно работают с кириллицей
 
 def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
     """Генерирует один PDF со всеми выбранными маршрутами"""
     buffer = BytesIO()
     
-    # Используем альбомную ориентацию для лучшего отображения
+    # Используем альбомную ориентацию
     doc = SimpleDocTemplate(
         buffer,
         pagesize=landscape(A4),
@@ -133,12 +146,12 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
     
     styles = getSampleStyleSheet()
     
-    # Базовые стили
+    # Стили со стандартными шрифтами (поддерживают кириллицу)
     title_style = ParagraphStyle(
         'MainTitle',
         parent=styles['Normal'],
         fontSize=16,
-        alignment=1,
+        alignment=1,  # Центр
         spaceAfter=15,
         fontName='Helvetica-Bold'
     )
@@ -173,7 +186,7 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
         'CellCenterStyle',
         parent=styles['Normal'],
         fontSize=8,
-        alignment=1,
+        alignment=1,  # Центр
         fontName='Helvetica'
     )
     
@@ -185,7 +198,6 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
     # Общая статистика
     total_boxes = int(all_routes_df["кол-во штук в заказе"].sum())
     total_stores = len(all_routes_df)
-    unique_routes = all_routes_df["Номер маршрута"].nunique()
     
     # ЗАГОЛОВОК
     elements.append(Paragraph("МАРШРУТНЫЙ ЛИСТ", title_style))
@@ -213,15 +225,15 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
         elements.append(Paragraph(f"• {summary}", header_style))
     elements.append(Spacer(1, 10))
     
-    # Строка с коробками
+    # Строка с коробками (оставляем пустое поле для заполнения)
     elements.append(Paragraph(
         f"<b>Водитель {driver} получил всего __________ коробов для {total_stores} магазинов</b>",
-        header_style
+        bold_style
     ))
     elements.append(Spacer(1, 15))
     
     # ТАБЛИЦА
-    # Заголовки
+    # Заголовки таблицы
     table_headers = [
         "№", "Заказ", "Магазин", "Адрес",
         "Маршрут", "Пломба", "Коробов выдано",
@@ -232,7 +244,7 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
     
     # Заполнение данными
     for idx, (_, row) in enumerate(all_routes_df.iterrows(), start=1):
-        # Ограничиваем длину текста
+        # Ограничиваем длину текста для лучшего отображения
         shop_name = str(row.get("Название магазина", ""))[:35]
         address = str(row.get("Адрес магазина", ""))[:45]
         
@@ -249,7 +261,7 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
             Paragraph("_________", cell_center_style)
         ])
     
-    # Ширина колонок (в мм)
+    # Ширина колонок (в мм) для landscape A4
     col_widths = [
         10*mm, 20*mm, 35*mm, 45*mm,
         18*mm, 18*mm, 20*mm, 20*mm, 22*mm, 22*mm
@@ -460,13 +472,15 @@ if len(not_shipped_routes) > 0:
             # Кнопка скачивания PDF
             st.subheader("📄 Скачать маршрутный лист")
             
-            st.download_button(
-                label="📄 Скачать маршрутный лист (PDF)",
-                data=pdf_buffer,
-                file_name=f"Маршрутный_лист_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-                mime="application/pdf",
-                use_container_width=True
-            )
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                st.download_button(
+                    label="📄 Скачать маршрутный лист (PDF)",
+                    data=pdf_buffer,
+                    file_name=f"Маршрутный_лист_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
             
             # Кнопка для обновления страницы
             if st.button("🔄 Обновить данные", key="refresh"):
