@@ -253,15 +253,15 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
     # ТАБЛИЦА
     # Заголовки
     headers = [
-        "<b>№ заказа</b>",
-        "<b>Магазин</b>",
-        "<b>Адрес</b>",
-        "<b>Маршрут</b>",
-        "<b>№ пломбы</b>",
-        "<b>Выдано<br/>коробок</b>",
-        "<b>Получено<br/>коробок</b>",
-        "<b>Подпись, печать,<br/>комментарии</b>",
-        "<b>Подпись<br/>водителя</b>"
+        "№ заказа",
+        "Магазин",
+        "Адрес",
+        "Маршрут",
+        "№ пломбы",
+        "Выдано коробок",
+        "Получено коробок",
+        "Подпись, печать,комментарии",
+        "Подпись водителя"
     ]
     
     table_data = [headers]
@@ -279,10 +279,10 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
             Paragraph(address, styleCell),
             Paragraph(route_name, styleCell),
             Paragraph(plomb, styleCell),
-            Paragraph("___________", styleCell),
-            Paragraph("___________", styleCell),
-            Paragraph("___________", styleCell),
-            Paragraph("___________", styleCell)
+            Paragraph(" ", styleCell),
+            Paragraph(" ", styleCell),
+            Paragraph(" ", styleCell),
+            Paragraph(" ", styleCell)
         ])
 
     # Ширина колонок
