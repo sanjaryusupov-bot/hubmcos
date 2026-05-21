@@ -160,19 +160,19 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
     with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
         filename = tmp_file.name
     
-    # Создаем документ с отступами
+    # Создаем документ с минимальными отступами для растяжки
     doc = SimpleDocTemplate(
         filename,
         pagesize=landscape(A4),
-        leftMargin=8*mm,      # Еще уменьшил для растяжки
-        rightMargin=8*mm,     # Еще уменьшил для растяжки
-        topMargin=20*mm,
-        bottomMargin=20*mm
+        leftMargin=5*mm,      # Минимальный отступ
+        rightMargin=5*mm,     # Минимальный отступ
+        topMargin=15*mm,
+        bottomMargin=15*mm
     )
 
     styles = getSampleStyleSheet()
     
-    # Стили для кириллицы
+    # Стили для кириллицы - все жирные
     styleTitle = ParagraphStyle(
         'CustomTitle',
         parent=styles['Normal'],
@@ -181,7 +181,8 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
         leading=20,
         alignment=1,
         spaceAfter=12,
-        spaceBefore=6
+        spaceBefore=6,
+        textColor=colors.black
     )
     
     styleInfo = ParagraphStyle(
@@ -190,7 +191,8 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
         fontName='HYSMyeongJo-Medium',
         fontSize=10,
         leading=14,
-        spaceAfter=4
+        spaceAfter=4,
+        textColor=colors.black
     )
     
     styleCell = ParagraphStyle(
@@ -198,7 +200,8 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
         parent=styles['Normal'],
         fontName='HYSMyeongJo-Medium',
         fontSize=8,
-        leading=10
+        leading=10,
+        textColor=colors.black
     )
     
     styleBold = ParagraphStyle(
@@ -207,17 +210,18 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
         fontName='HYSMyeongJo-Medium',
         fontSize=9,
         leading=11,
-        alignment=0
+        alignment=0,
+        textColor=colors.black
     )
     
     styleHeader = ParagraphStyle(
         'CustomHeader',
         parent=styles['Normal'],
         fontName='HYSMyeongJo-Medium',
-        fontSize=8,
-        leading=11,
+        fontSize=9,
+        leading=12,
         alignment=1,
-        textColor=colors.white
+        textColor=colors.black  # Черный текст в заголовках
     )
 
     elements = []
@@ -229,8 +233,8 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
     elements.append(title)
     elements.append(Spacer(1, 6))
     
-    # ИНФОРМАЦИЯ
-    info1 = Paragraph(f"<b>Маршрут(ы):</b> {routes_text}", styleInfo)
+    # ИНФОРМАЦИЯ - убрано слово "Маршрут(ы)"
+    info1 = Paragraph(f"<b>Маршрут:</b> {routes_text}", styleInfo)
     elements.append(info1)
     
     info2 = Paragraph(f"<b>Дата:</b> {datetime.now().strftime('%d.%m.%Y')}", styleInfo)
@@ -239,26 +243,26 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
     info3 = Paragraph(f"<b>Водитель:</b> {driver}", styleInfo)
     elements.append(info3)
     
-    info4 = Paragraph(f"<b>Номер машины:</b> {car}", styleInfo)
+    info4 = Paragraph(f"<b>Машина:</b> {car}", styleInfo)
     elements.append(info4)
     
-    info5 = Paragraph(f"<b>№ пломбы:</b> {plomb}", styleInfo)  # Оставляем в шапке
+    info5 = Paragraph(f"<b>Пломба:</b> {plomb}", styleInfo)
     elements.append(info5)
     
-    info6 = Paragraph(f"<b>Количество магазинов:</b> {total_points}", styleInfo)
+    info6 = Paragraph(f"<b>Магазинов:</b> {total_points}", styleInfo)
     elements.append(info6)
     
     elements.append(Spacer(1, 8))
     elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.black))
     elements.append(Spacer(1, 8))
 
-    # ТАБЛИЦА
+    # ТАБЛИЦА - заголовки с черным текстом на сером фоне
     headers = [
         "№ заказа",
         "Магазин",
         "Адрес",
         "Маршрут",
-        "№ пломбы",
+        "Пломба",
         "Выдано\nкоробок",
         "Получено\nкоробок",
         "Подпись, печать,\nкомментарии",
@@ -267,11 +271,11 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
     
     table_data = [[Paragraph(h, styleHeader) for h in headers]]
 
-    # Данные - ячейки с пломбой оставляем пустыми
+    # Данные - все ячейки пустые для заполнения
     for _, row in all_data.iterrows():
         order_num = f"<b>{row['№ заказа']}</b>"
-        shop_name = str(row["Название магазина"])[:40]  # Увеличил для растяжки
-        address = str(row["Адрес магазина"])[:55]       # Увеличил для растяжки
+        shop_name = str(row["Название магазина"])[:50]
+        address = str(row["Адрес магазина"])[:65]
         route_name = str(row["Номер маршрута"])
         
         table_data.append([
@@ -279,69 +283,77 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
             Paragraph(shop_name, styleCell),
             Paragraph(address, styleCell),
             Paragraph(route_name, styleCell),
-            Paragraph(" ", styleCell),  # Пустое поле для пломбы
-            Paragraph(" ", styleCell),  # Пустое поле
-            Paragraph(" ", styleCell),  # Пустое поле
-            Paragraph(" ", styleCell),  # Пустое поле
-            Paragraph(" ", styleCell)   # Пустое поле
+            Paragraph(" ", styleCell),
+            Paragraph(" ", styleCell),
+            Paragraph(" ", styleCell),
+            Paragraph(" ", styleCell),
+            Paragraph(" ", styleCell)
         ])
 
-    # Растянутые ширины колонок
+    # Максимально растянутые ширины колонок
     table = Table(
         table_data,
         colWidths=[
-            20*mm,  # № заказа (увеличил)
-            35*mm,  # Магазин (увеличил)
-            45*mm,  # Адрес (увеличил)
-            22*mm,  # Маршрут (увеличил)
-            20*mm,  # № пломбы (увеличил)
-            20*mm,  # Выдано коробок (увеличил)
-            20*mm,  # Получено коробок (увеличил)
-            32*mm,  # Подпись, комментарии (увеличил)
-            22*mm   # Подпись водителя (увеличил)
+            22*mm,  # № заказа
+            40*mm,  # Магазин
+            55*mm,  # Адрес
+            25*mm,  # Маршрут
+            22*mm,  # Пломба
+            22*mm,  # Выдано коробок
+            22*mm,  # Получено коробок
+            35*mm,  # Подпись, комментарии
+            25*mm   # Подпись водителя
         ],
         repeatRows=1
     )
 
-    # Стиль таблицы с более толстыми границами
+    # Стиль таблицы - серый фон заголовков, черный текст, толстые рамки
     table.setStyle(TableStyle([
-        # Заголовок
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1F2937")),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+        # Заголовок - серый фон вместо черного
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#D3D3D3")),  # Светло-серый
+        ('TEXTCOLOR', (0,0), (-1,0), colors.black),  # Черный текст
         ('FONTNAME', (0,0), (-1,0), 'HYSMyeongJo-Medium'),
-        ('FONTSIZE', (0,0), (-1,0), 8),
+        ('FONTSIZE', (0,0), (-1,0), 9),
         ('ALIGN', (0,0), (-1,0), 'CENTER'),
         ('VALIGN', (0,0), (-1,0), 'MIDDLE'),
         
-        # Тело таблицы
+        # Тело таблицы - жирный шрифт везде
         ('FONTNAME', (0,1), (-1,-1), 'HYSMyeongJo-Medium'),
-        ('FONTSIZE', (0,1), (-1,-1), 8),
+        ('FONTSIZE', (0,1), (-1,-1), 9),  # Увеличил размер шрифта
         ('VALIGN', (0,1), (-1,-1), 'MIDDLE'),
         
-        # Более толстые границы
-        ('GRID', (0,0), (-1,-1), 0.8, colors.black),  # Увеличил толщину с 0.5 до 0.8
-        ('BOX', (0,0), (-1,-1), 1.2, colors.black),    # Внешняя рамка толще
+        # Толстые границы
+        ('GRID', (0,0), (-1,-1), 1.0, colors.black),  # Толстые внутренние линии
+        ('BOX', (0,0), (-1,-1), 1.5, colors.black),   # Внешняя рамка еще толще
         
         # Отступы
-        ('TOPPADDING', (0,0), (-1,-1), 5),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
-        ('LEFTPADDING', (0,0), (-1,-1), 4),
-        ('RIGHTPADDING', (0,0), (-1,-1), 4),
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+        ('LEFTPADDING', (0,0), (-1,-1), 5),
+        ('RIGHTPADDING', (0,0), (-1,-1), 5),
         
         # Выравнивание
-        ('ALIGN', (0,1), (0,-1), 'CENTER'),  # № заказа по центру
-        ('ALIGN', (4,1), (8,-1), 'CENTER'),  # Пломба и остальные колонки по центру
-        ('ALIGN', (1,1), (2,-1), 'LEFT'),    # Магазин и адрес по левому краю
-        ('ALIGN', (3,1), (3,-1), 'CENTER'),  # Маршрут по центру
+        ('ALIGN', (0,1), (0,-1), 'CENTER'),   # № заказа по центру
+        ('ALIGN', (1,1), (2,-1), 'LEFT'),     # Магазин и адрес по левому краю
+        ('ALIGN', (3,1), (8,-1), 'CENTER'),   # Остальные колонки по центру
     ]))
 
     elements.append(table)
     elements.append(Spacer(1, 15))
     
-    # ПОДПИСИ
+    # ПОДПИСИ - жирным шрифтом
+    styleSignatures = ParagraphStyle(
+        'CustomSignatures',
+        parent=styles['Normal'],
+        fontName='HYSMyeongJo-Medium',
+        fontSize=9,
+        leading=12,
+        textColor=colors.black
+    )
+    
     signatures = Paragraph(
-        "Подпись водителя: _________________________                                    Подпись ответственного: _________________________",
-        styleCell
+        "<b>Подпись водителя:</b> _________________________ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>Подпись ответственного:</b> _________________________",
+        styleSignatures
     )
     elements.append(signatures)
 
