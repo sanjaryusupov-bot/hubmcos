@@ -5,7 +5,12 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 from io import BytesIO
 import random
-from fpdf import FPDF
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.units import mm
+from reportlab.pdfgen import canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib import colors
 import urllib.request
 import os
 
@@ -107,48 +112,50 @@ def update_route(route_name, car_number, driver, plomb):
             sheet.update_cell(idx, plomb_col, plomb)
             break
 
-# ---------------- PDF GENERATION WITH FPDF ----------------
+# ---------------- DOWNLOAD FONT ----------------
 
-def download_dejavu_fonts():
-    """Скачивает шрифты DejaVu для поддержки русского языка"""
-    fonts = {
-        '/tmp/DejaVuSans.ttf': 'https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf',
-        '/tmp/DejaVuSans-Bold.ttf': 'https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans-Bold.ttf'
-    }
+def download_font():
+    """Скачивает шрифт DejaVuSans для поддержки русского языка"""
+    font_url = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf"
+    font_path = "/tmp/DejaVuSans.ttf"
     
-    for path, url in fonts.items():
-        if not os.path.exists(path):
-            try:
-                urllib.request.urlretrieve(url, path)
-            except Exception as e:
-                print(f"Ошибка скачивания шрифта: {e}")
+    if not os.path.exists(font_path):
+        try:
+            urllib.request.urlretrieve(font_url, font_path)
+            return font_path
+        except:
+            return None
+    return font_path
 
-class RussianPDF(FPDF):
-    def __init__(self):
-        super().__init__()
-        # Скачиваем шрифты если их нет
-        download_dejavu_fonts()
-        # Добавляем шрифты
-        if os.path.exists('/tmp/DejaVuSans.ttf'):
-            self.add_font('DejaVu', '', '/tmp/DejaVuSans.ttf', uni=True)
-        if os.path.exists('/tmp/DejaVuSans-Bold.ttf'):
-            self.add_font('DejaVu', 'B', '/tmp/DejaVuSans-Bold.ttf', uni=True)
+# Регистрируем шрифт
+font_path = download_font()
+if font_path and os.path.exists(font_path):
+    try:
+        pdfmetrics.registerFont(TTFont('DejaVu', font_path))
+        RUSSIAN_FONT_AVAILABLE = True
+    except:
+        RUSSIAN_FONT_AVAILABLE = False
+else:
+    RUSSIAN_FONT_AVAILABLE = False
+
+# ---------------- PDF GENERATION WITH REPORTLAB ----------------
 
 def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
-    """Генерирует PDF с помощью FPDF (отличная поддержка русского языка)"""
-    
+    """Генерирует PDF с поддержкой русского языка через reportlab"""
     buffer = BytesIO()
     
     # Создаем PDF в альбомной ориентации
-    pdf = RussianPDF()
-    pdf.add_page(orientation='L')
-    pdf.set_auto_page_break(auto=True, margin=15)
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        rightMargin=15*mm,
+        leftMargin=15*mm,
+        topMargin=15*mm,
+        bottomMargin=15*mm
+    )
     
-    # Проверяем, загрузился ли шрифт, если нет - используем стандартный
-    try:
-        pdf.set_font('DejaVu', '', 12)
-    except:
-        pdf.set_font('Helvetica', '', 12)
+    # Контейнер для элементов
+    story = []
     
     # Случайный номер
     random_num = random.randint(10000, 99999)
@@ -157,121 +164,190 @@ def generate_pdf(all_routes_df, routes_list, driver, car, plomb):
     total_boxes = int(all_routes_df["кол-во штук в заказе"].sum())
     total_stores = len(all_routes_df)
     
-    # ЗАГОЛОВОК
-    try:
-        pdf.set_font('DejaVu', 'B', 20)
-    except:
-        pdf.set_font('Helvetica', 'B', 20)
-    pdf.cell(0, 15, 'МАРШРУТНЫЙ ЛИСТ', ln=True, align='C')
-    pdf.ln(5)
-    
-    # Номер
-    try:
-        pdf.set_font('DejaVu', '', 12)
-    except:
-        pdf.set_font('Helvetica', '', 12)
-    pdf.cell(0, 8, f'№ {random_num}', ln=True, align='L')
-    pdf.ln(5)
-    
-    # Информация о рейсе
-    pdf.cell(0, 8, f'Водитель: {driver}', ln=True)
-    pdf.cell(0, 8, f'А/м гос номер: {car}', ln=True)
-    pdf.cell(0, 8, f'Дата: {datetime.now().strftime("%d.%m.%Y")}', ln=True)
-    pdf.cell(0, 8, f'№ пломбы: {plomb}', ln=True)
-    pdf.ln(5)
-    
-    # Сводка по маршрутам
-    try:
-        pdf.set_font('DejaVu', 'B', 11)
-    except:
-        pdf.set_font('Helvetica', 'B', 11)
-    pdf.cell(0, 8, 'Маршруты в рейсе:', ln=True)
-    
-    try:
-        pdf.set_font('DejaVu', '', 10)
-    except:
-        pdf.set_font('Helvetica', '', 10)
-    for route in routes_list:
-        route_data = all_routes_df[all_routes_df["Номер маршрута"] == route]
-        pdf.cell(0, 6, f'• Маршрут {route} ({len(route_data)} магазинов, {int(route_data["кол-во штук в заказе"].sum())} коробок)', ln=True)
-    pdf.ln(5)
-    
-    # Строка с коробками
-    try:
-        pdf.set_font('DejaVu', 'B', 11)
-    except:
-        pdf.set_font('Helvetica', 'B', 11)
-    pdf.cell(0, 8, f'Водитель {driver} получил всего __________ коробов для {total_stores} магазинов', ln=True)
-    pdf.ln(8)
-    
-    # ТАБЛИЦА
-    # Ширина колонок (в мм) для A4 landscape (297мм)
-    col_widths = [12, 25, 40, 50, 22, 22, 25, 25, 28, 28]
-    
-    # Заголовки
-    headers = ['№', 'Заказ', 'Магазин', 'Адрес', 'Маршрут', 'Пломба', 'Коробов выдано', 'Коробов получено', 'Подпись и печать', 'Подпись водителя']
-    
-    try:
-        pdf.set_font('DejaVu', 'B', 7)
-    except:
-        pdf.set_font('Helvetica', 'B', 7)
-    pdf.set_fill_color(44, 62, 80)
-    pdf.set_text_color(255, 255, 255)
-    
-    # Рисуем заголовки
-    for i, header in enumerate(headers):
-        pdf.cell(col_widths[i], 10, header, border=1, align='C', fill=True)
-    pdf.ln()
-    
-    # Данные
-    try:
-        pdf.set_font('DejaVu', '', 7)
-    except:
-        pdf.set_font('Helvetica', '', 7)
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_fill_color(255, 255, 255)
-    
-    for idx, (_, row) in enumerate(all_routes_df.iterrows(), start=1):
-        # Ограничиваем длину текста
-        shop_name = str(row.get("Название магазина", ""))[:30]
-        address = str(row.get("Адрес магазина", ""))[:40]
+    # Используем canvas для прямой отрисовки (лучше для русского языка)
+    def draw_pdf(c):
+        y = 280  # Начальная позиция по Y (сверху)
+        x_start = 20
         
-        # Рисуем ячейки
-        pdf.cell(col_widths[0], 8, str(idx), border=1, align='C')
-        pdf.cell(col_widths[1], 8, str(row.get("№ заказа", ""))[:15], border=1, align='C')
-        pdf.cell(col_widths[2], 8, shop_name, border=1, align='L')
-        pdf.cell(col_widths[3], 8, address, border=1, align='L')
-        pdf.cell(col_widths[4], 8, str(row.get("Номер маршрута", "")), border=1, align='C')
-        pdf.cell(col_widths[5], 8, plomb, border=1, align='C')
-        pdf.cell(col_widths[6], 8, str(int(row.get("кол-во штук в заказе", 0))), border=1, align='C')
-        pdf.cell(col_widths[7], 8, '________', border=1, align='C')
-        pdf.cell(col_widths[8], 8, '_________', border=1, align='C')
-        pdf.cell(col_widths[9], 8, '_________', border=1, align='C')
-        pdf.ln()
+        # Заголовок
+        if RUSSIAN_FONT_AVAILABLE:
+            c.setFont('DejaVu', 18)
+        else:
+            c.setFont('Helvetica-Bold', 18)
+        c.drawCentredString(150, y, "МАРШРУТНЫЙ ЛИСТ")
+        y -= 15
+        
+        # Номер
+        if RUSSIAN_FONT_AVAILABLE:
+            c.setFont('DejaVu', 11)
+        else:
+            c.setFont('Helvetica', 11)
+        c.drawString(x_start, y, f"№ {random_num}")
+        y -= 12
+        
+        # Информация о рейсе
+        c.drawString(x_start, y, f"Водитель: {driver}")
+        y -= 8
+        c.drawString(x_start, y, f"А/м гос номер: {car}")
+        y -= 8
+        c.drawString(x_start, y, f"Дата: {datetime.now().strftime('%d.%m.%Y')}")
+        y -= 8
+        c.drawString(x_start, y, f"№ пломбы: {plomb}")
+        y -= 15
+        
+        # Маршруты в рейсе
+        if RUSSIAN_FONT_AVAILABLE:
+            c.setFont('DejaVu', 10)
+        else:
+            c.setFont('Helvetica-Bold', 10)
+        c.drawString(x_start, y, "Маршруты в рейсе:")
+        y -= 8
+        
+        if RUSSIAN_FONT_AVAILABLE:
+            c.setFont('DejaVu', 9)
+        else:
+            c.setFont('Helvetica', 9)
+        for route in routes_list:
+            route_data = all_routes_df[all_routes_df["Номер маршрута"] == route]
+            text = f"• Маршрут {route} ({len(route_data)} магазинов, {int(route_data['кол-во штук в заказе'].sum())} коробок)"
+            c.drawString(x_start + 5, y, text)
+            y -= 7
+        y -= 8
+        
+        # Строка с коробками
+        if RUSSIAN_FONT_AVAILABLE:
+            c.setFont('DejaVu', 10)
+        else:
+            c.setFont('Helvetica-Bold', 10)
+        c.drawString(x_start, y, f"Водитель {driver} получил всего __________ коробов для {total_stores} магазинов")
+        y -= 20
+        
+        # Заголовки таблицы
+        headers = [
+            "№", "Заказ", "Магазин", "Адрес", "Маршрут", "Пломба",
+            "Коробов\nвыдано", "Коробов\nполучено", "Подпись и\nпечать", "Подпись\nводителя"
+        ]
+        
+        col_widths = [12, 25, 40, 50, 20, 20, 18, 18, 25, 25]
+        x = x_start
+        
+        # Рисуем заголовки
+        if RUSSIAN_FONT_AVAILABLE:
+            c.setFont('DejaVu', 7)
+        else:
+            c.setFont('Helvetica-Bold', 7)
+        c.setFillColor(colors.white)
+        c.setFillColorRGB(0.17, 0.24, 0.31)  # #2c3e50
+        
+        for i, header in enumerate(headers):
+            c.rect(x, y - 8, col_widths[i], 10, fill=True)
+            c.setFillColor(colors.white)
+            c.drawCentredString(x + col_widths[i]/2, y - 3, header)
+            x += col_widths[i]
+        
+        c.setFillColor(colors.black)
+        y -= 10
+        
+        # Данные
+        if RUSSIAN_FONT_AVAILABLE:
+            c.setFont('DejaVu', 6)
+        else:
+            c.setFont('Helvetica', 6)
+        
+        for idx, (_, row) in enumerate(all_routes_df.iterrows(), start=1):
+            x = x_start
+            if y < 50:  # Новая страница
+                c.showPage()
+                y = 280
+                # Переносим заголовки на новую страницу
+                x = x_start
+                if RUSSIAN_FONT_AVAILABLE:
+                    c.setFont('DejaVu', 7)
+                else:
+                    c.setFont('Helvetica-Bold', 7)
+                c.setFillColorRGB(0.17, 0.24, 0.31)
+                for i, header in enumerate(headers):
+                    c.rect(x, y - 8, col_widths[i], 10, fill=True)
+                    c.setFillColor(colors.white)
+                    c.drawCentredString(x + col_widths[i]/2, y - 3, header)
+                    x += col_widths[i]
+                c.setFillColor(colors.black)
+                y -= 10
+                if RUSSIAN_FONT_AVAILABLE:
+                    c.setFont('DejaVu', 6)
+                else:
+                    c.setFont('Helvetica', 6)
+                x = x_start
+            
+            shop_name = str(row.get("Название магазина", ""))[:25]
+            address = str(row.get("Адрес магазина", ""))[:35]
+            
+            c.rect(x, y - 6, col_widths[0], 7)
+            c.drawCentredString(x + col_widths[0]/2, y - 2, str(idx))
+            x += col_widths[0]
+            
+            c.rect(x, y - 6, col_widths[1], 7)
+            c.drawCentredString(x + col_widths[1]/2, y - 2, str(row.get("№ заказа", ""))[:12])
+            x += col_widths[1]
+            
+            c.rect(x, y - 6, col_widths[2], 7)
+            c.drawString(x + 2, y - 2, shop_name)
+            x += col_widths[2]
+            
+            c.rect(x, y - 6, col_widths[3], 7)
+            c.drawString(x + 2, y - 2, address)
+            x += col_widths[3]
+            
+            c.rect(x, y - 6, col_widths[4], 7)
+            c.drawCentredString(x + col_widths[4]/2, y - 2, str(row.get("Номер маршрута", "")))
+            x += col_widths[4]
+            
+            c.rect(x, y - 6, col_widths[5], 7)
+            c.drawCentredString(x + col_widths[5]/2, y - 2, plomb)
+            x += col_widths[5]
+            
+            c.rect(x, y - 6, col_widths[6], 7)
+            c.drawCentredString(x + col_widths[6]/2, y - 2, str(int(row.get("кол-во штук в заказе", 0))))
+            x += col_widths[6]
+            
+            c.rect(x, y - 6, col_widths[7], 7)
+            c.drawCentredString(x + col_widths[7]/2, y - 2, "_____")
+            x += col_widths[7]
+            
+            c.rect(x, y - 6, col_widths[8], 7)
+            c.drawCentredString(x + col_widths[8]/2, y - 2, "______")
+            x += col_widths[8]
+            
+            c.rect(x, y - 6, col_widths[9], 7)
+            c.drawCentredString(x + col_widths[9]/2, y - 2, "______")
+            
+            y -= 8
+        
+        y -= 15
+        
+        # Итого
+        if RUSSIAN_FONT_AVAILABLE:
+            c.setFont('DejaVu', 10)
+        else:
+            c.setFont('Helvetica-Bold', 10)
+        c.drawString(x_start, y, f"Итого коробов по всем маршрутам: {total_boxes}")
+        y -= 20
+        
+        # Подписи
+        if RUSSIAN_FONT_AVAILABLE:
+            c.setFont('DejaVu', 9)
+        else:
+            c.setFont('Helvetica', 9)
+        c.drawString(x_start, y, "Подпись водителя: ___________________________")
+        y -= 8
+        c.drawString(x_start, y, "Подпись принимающей стороны: ___________________________")
+        y -= 8
+        c.drawString(x_start, y, "Печать: ___________________________")
+        y -= 12
+        c.drawString(x_start, y, f"Дата: {datetime.now().strftime('%d.%m.%Y')}")
     
-    pdf.ln(8)
-    
-    # Итого
-    try:
-        pdf.set_font('DejaVu', 'B', 11)
-    except:
-        pdf.set_font('Helvetica', 'B', 11)
-    pdf.cell(0, 8, f'Итого коробов по всем маршрутам: {total_boxes}', ln=True)
-    pdf.ln(15)
-    
-    # Подписи
-    try:
-        pdf.set_font('DejaVu', '', 11)
-    except:
-        pdf.set_font('Helvetica', '', 11)
-    pdf.cell(0, 8, 'Подпись водителя: ___________________________', ln=True)
-    pdf.cell(0, 8, 'Подпись принимающей стороны: ___________________________', ln=True)
-    pdf.cell(0, 8, 'Печать: ___________________________', ln=True)
-    pdf.ln(8)
-    pdf.cell(0, 8, f'Дата: {datetime.now().strftime("%d.%m.%Y")}', ln=True)
-    
-    # Сохраняем в буфер
-    pdf.output(buffer)
+    # Строим PDF
+    doc.build(story, onFirstPage=draw_pdf, onLaterPages=draw_pdf)
     buffer.seek(0)
     
     return buffer
