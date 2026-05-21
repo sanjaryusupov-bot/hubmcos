@@ -179,13 +179,22 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
         fontName='HYSMyeongJo-Medium',
         fontSize=16,
         leading=20,
-        alignment=1,
+        alignment=1,  # Center alignment
         spaceAfter=12,
         spaceBefore=6
     )
     
     styleInfo = ParagraphStyle(
         'CustomInfo',
+        parent=styles['Normal'],
+        fontName='HYSMyeongJo-Medium',
+        fontSize=10,
+        leading=14,
+        spaceAfter=4
+    )
+    
+    styleInfoBold = ParagraphStyle(
+        'CustomInfoBold',
         parent=styles['Normal'],
         fontName='HYSMyeongJo-Medium',
         fontSize=10,
@@ -214,22 +223,29 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
     routes_text = ", ".join(routes_list)
 
     # ЗАГОЛОВОК
-    title = Paragraph("<b>МАРШРУТНЫЙ ЛИСТ ДОСТАВКИ</b>", styleTitle)
+    title = Paragraph("МАРШРУТНЫЙ ЛИСТ ДОСТАВКИ", styleTitle)
     elements.append(title)
     elements.append(Spacer(1, 6))
     
-    # ИНФОРМАЦИЯ
-    info_text = f"""
-    <b>Маршрут(ы):</b> {routes_text}<br/>
-    <b>Дата:</b> {datetime.now().strftime('%d.%m.%Y')}<br/>
-    <b>Водитель:</b> {driver}<br/>
-    <b>Номер машины:</b> {car}<br/>
-    <b>№ пломбы:</b> {plomb}<br/>
-    <b>Количество магазинов:</b> {total_points}
-    """
+    # ИНФОРМАЦИЯ - используем отдельные Paragraph для каждой строки с жирным текстом
+    info1 = Paragraph(f"<b>Маршрут(ы):</b> {routes_text}", styleInfo)
+    elements.append(info1)
     
-    info_paragraph = Paragraph(info_text, styleInfo)
-    elements.append(info_paragraph)
+    info2 = Paragraph(f"<b>Дата:</b> {datetime.now().strftime('%d.%m.%Y')}", styleInfo)
+    elements.append(info2)
+    
+    info3 = Paragraph(f"<b>Водитель:</b> {driver}", styleInfo)
+    elements.append(info3)
+    
+    info4 = Paragraph(f"<b>Номер машины:</b> {car}", styleInfo)
+    elements.append(info4)
+    
+    info5 = Paragraph(f"<b>№ пломбы:</b> {plomb}", styleInfo)
+    elements.append(info5)
+    
+    info6 = Paragraph(f"<b>Количество магазинов:</b> {total_points}", styleInfo)
+    elements.append(info6)
+    
     elements.append(Spacer(1, 8))
     elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.black))
     elements.append(Spacer(1, 8))
@@ -321,7 +337,7 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
     
     # ПРИМЕЧАНИЯ
     notes = Paragraph(
-        "<b>Примечания:</b> Количество коробок заполняется при отгрузке. Получение подтверждается подписью и печатью.",
+        "Примечания: Количество коробок заполняется при отгрузке. Получение подтверждается подписью и печатью.",
         styleCell
     )
     elements.append(notes)
@@ -330,7 +346,7 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
     
     # ПОДПИСИ
     signatures = Paragraph(
-        "<b>Подпись водителя:</b> _________________________ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>Подпись ответственного:</b> _________________________",
+        "Подпись водителя: _________________________                                    Подпись ответственного: _________________________",
         styleCell
     )
     elements.append(signatures)
