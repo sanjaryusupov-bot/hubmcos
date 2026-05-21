@@ -164,8 +164,8 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
     doc = SimpleDocTemplate(
         filename,
         pagesize=landscape(A4),
-        leftMargin=15*mm,
-        rightMargin=15*mm,
+        leftMargin=10*mm,      # Уменьшил левый отступ
+        rightMargin=10*mm,     # Уменьшил правый отступ
         topMargin=20*mm,
         bottomMargin=20*mm
     )
@@ -193,15 +193,6 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
         spaceAfter=4
     )
     
-    styleInfoBold = ParagraphStyle(
-        'CustomInfoBold',
-        parent=styles['Normal'],
-        fontName='HYSMyeongJo-Medium',
-        fontSize=10,
-        leading=14,
-        spaceAfter=4
-    )
-    
     styleCell = ParagraphStyle(
         'CustomCell',
         parent=styles['Normal'],
@@ -215,7 +206,18 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
         parent=styles['Normal'],
         fontName='HYSMyeongJo-Medium',
         fontSize=9,
-        leading=11
+        leading=11,
+        alignment=0  # Left alignment
+    )
+    
+    styleHeader = ParagraphStyle(
+        'CustomHeader',
+        parent=styles['Normal'],
+        fontName='HYSMyeongJo-Medium',
+        fontSize=8,
+        leading=11,
+        alignment=1,  # Center alignment
+        textColor=colors.white
     )
 
     elements = []
@@ -251,26 +253,26 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
     elements.append(Spacer(1, 8))
 
     # ТАБЛИЦА
-    # Заголовки
+    # Заголовки (сделал более компактными)
     headers = [
         "№ заказа",
         "Магазин",
         "Адрес",
         "Маршрут",
         "№ пломбы",
-        "Выдано коробок",
-        "Получено коробок",
-        "Подпись, печать,комментарии",
-        "Подпись водителя"
+        "Выдано\nкоробок",
+        "Получено\nкоробок",
+        "Подпись, печать,\nкомментарии",
+        "Подпись\nводителя"
     ]
     
-    table_data = [headers]
+    table_data = [[Paragraph(h, styleHeader) for h in headers]]
 
     # Данные
     for _, row in all_data.iterrows():
         order_num = f"<b>{row['№ заказа']}</b>"
-        shop_name = str(row["Название магазина"])[:40]
-        address = str(row["Адрес магазина"])[:50]
+        shop_name = str(row["Название магазина"])[:35]  # Уменьшил длину
+        address = str(row["Адрес магазина"])[:45]       # Уменьшил длину
         route_name = str(row["Номер маршрута"])
         
         table_data.append([
@@ -285,19 +287,19 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
             Paragraph(" ", styleCell)
         ])
 
-    # Ширина колонок
+    # Оптимизированные ширины колонок
     table = Table(
         table_data,
         colWidths=[
-            22*mm,  # № заказа
-            38*mm,  # Магазин
-            48*mm,  # Адрес
-            24*mm,  # Маршрут
-            20*mm,  # № пломбы
-            22*mm,  # Выдано коробок
-            22*mm,  # Получено коробок
-            38*mm,  # Подпись, комментарии
-            28*mm   # Подпись водителя
+            18*mm,  # № заказа
+            30*mm,  # Магазин
+            40*mm,  # Адрес
+            20*mm,  # Маршрут
+            18*mm,  # № пломбы
+            18*mm,  # Выдано коробок
+            18*mm,  # Получено коробок
+            30*mm,  # Подпись, комментарии
+            20*mm   # Подпись водителя
         ],
         repeatRows=1
     )
@@ -308,7 +310,7 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1F2937")),
         ('TEXTCOLOR', (0,0), (-1,0), colors.white),
         ('FONTNAME', (0,0), (-1,0), 'HYSMyeongJo-Medium'),
-        ('FONTSIZE', (0,0), (-1,0), 9),
+        ('FONTSIZE', (0,0), (-1,0), 8),
         ('ALIGN', (0,0), (-1,0), 'CENTER'),
         ('VALIGN', (0,0), (-1,0), 'MIDDLE'),
         
@@ -321,29 +323,24 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
         ('GRID', (0,0), (-1,-1), 0.5, colors.black),
         
         # Отступы
-        ('TOPPADDING', (0,0), (-1,-1), 6),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
-        ('LEFTPADDING', (0,0), (-1,-1), 4),
-        ('RIGHTPADDING', (0,0), (-1,-1), 4),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('LEFTPADDING', (0,0), (-1,-1), 3),
+        ('RIGHTPADDING', (0,0), (-1,-1), 3),
         
         # Выравнивание
-        ('ALIGN', (0,1), (0,-1), 'CENTER'),
-        ('ALIGN', (3,1), (8,-1), 'CENTER'),
-        ('ALIGN', (1,1), (2,-1), 'LEFT'),
+        ('ALIGN', (0,1), (0,-1), 'CENTER'),  # № заказа по центру
+        ('ALIGN', (3,1), (8,-1), 'CENTER'),  # Остальные колонки по центру
+        ('ALIGN', (1,1), (2,-1), 'LEFT'),    # Магазин и адрес по левому краю
+        
+        # Жирный шрифт для номера заказа
+        ('TEXTCOLOR', (0,1), (0,-1), colors.black),
     ]))
 
     elements.append(table)
     elements.append(Spacer(1, 15))
     
-    # ПРИМЕЧАНИЯ
-    notes = Paragraph(
-        "Примечания: Количество коробок заполняется при отгрузке. Получение подтверждается подписью и печатью.",
-        styleCell
-    )
-    elements.append(notes)
-    
-    elements.append(Spacer(1, 10))
-    
+    # Убрал примечания - оставил только подписи
     # ПОДПИСИ
     signatures = Paragraph(
         "Подпись водителя: _________________________                                    Подпись ответственного: _________________________",
