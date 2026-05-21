@@ -253,8 +253,8 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb):
     # ТАБЛИЦА
     # Заголовки
     headers = [
-        "<b>№ заказа</b>",
-        "<b>Магазин</b>",
+        "№ заказа",
+        "Магазин",
         "<b>Адрес</b>",
         "<b>Маршрут</b>",
         "<b>№ пломбы</b>",
