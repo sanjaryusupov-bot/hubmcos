@@ -1,6 +1,6 @@
 streamlit
 pandas
 gspread
+google-auth
 oauth2client
 reportlab
-PyPDF2
