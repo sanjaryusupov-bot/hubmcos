@@ -205,8 +205,8 @@ def update_routes_batch(routes_list, car_number, driver, plomb, trip_number):
         st.error(f"❌ Ошибка обновления: {str(e)}")
         return False
 
-def rollback_orders_batch(order_numbers):
-    """Пакетный откат заказов"""
+def rollback_routes_batch(routes_list):
+    """Пакетный откат маршрутов"""
     sheet = connect_sheet()
     if sheet is None:
         return False
@@ -225,10 +225,10 @@ def rollback_orders_batch(order_numbers):
         }
         
         updates = []
-        order_strs = [str(o) for o in order_numbers]
+        route_strs = [str(r) for r in routes_list]
         
         for idx, row in enumerate(all_data[1:], start=2):
-            if len(row) > headers.index("№ заказа") and str(row[headers.index("№ заказа")]) in order_strs:
+            if len(row) > headers.index("Номер маршрута") and str(row[headers.index("Номер маршрута")]) in route_strs:
                 updates.append({'range': f'{chr(65 + col_indices["status"])}{idx}', 'value': ""})
                 updates.append({'range': f'{chr(65 + col_indices["fact"])}{idx}', 'value': ""})
                 updates.append({'range': f'{chr(65 + col_indices["car"])}{idx}', 'value': ""})
@@ -362,28 +362,31 @@ col4.metric("Кол-во шт", int(not_shipped["кол-во штук в зак�
 
 st.divider()
 
-if st.button("🔄 Откатить заказы", type="secondary"):
+if st.button("🔄 Откатить маршруты", type="secondary"):
     st.session_state.rollback_mode = True
     st.rerun()
 
 if st.session_state.get('rollback_mode', False):
     st.subheader("🔄 Режим отката")
-    shipped_orders = shipped[shipped["Статус отгрузки"] == "ОТГРУЖЕН"]
+    shipped_routes = shipped[shipped["Статус отгрузки"] == "ОТГРУЖЕН"]
     
-    if len(shipped_orders) > 0:
-        orders_to_rollback = st.multiselect("Выберите заказы", options=shipped_orders["№ заказа"].tolist())
+    if len(shipped_routes) > 0:
+        # Получаем уникальные отгруженные маршруты
+        routes_for_rollback = sorted(shipped_routes["Номер маршрута"].dropna().unique())
+        routes_to_rollback = st.multiselect("Выберите маршруты для отката", options=routes_for_rollback)
         
         col1, col2 = st.columns(2)
-        if col1.button("✅ Подтвердить"):
-            if orders_to_rollback and rollback_orders_batch(orders_to_rollback):
-                st.success(f"Откачено {len(orders_to_rollback)} заказов")
+        if col1.button("✅ Подтвердить откат"):
+            if routes_to_rollback and rollback_routes_batch(routes_to_rollback):
+                st.success(f"✅ Откачено {len(routes_to_rollback)} маршрутов")
                 st.session_state.rollback_mode = False
+                time.sleep(1)
                 st.rerun()
         if col2.button("❌ Отмена"):
             st.session_state.rollback_mode = False
             st.rerun()
     else:
-        st.info("Нет отгруженных заказов")
+        st.info("Нет отгруженных маршрутов")
         if st.button("Назад"):
             st.session_state.rollback_mode = False
             st.rerun()
@@ -406,16 +409,37 @@ elif not st.session_state.get('shipment_completed', False):
         else:
             selected_routes = []
     
+    # Временное окно с деталями
     if selected_routes:
-        st.subheader("📋 Детали")
+        st.subheader("📋 Детали выбранных маршрутов")
         details = not_shipped[not_shipped["Номер маршрута"].isin(selected_routes)]
-        st.dataframe(details[["№ заказа", "Название магазина", "Адрес магазина", "Номер маршрута"]], use_container_width=True)
+        
+        # Показываем основные поля: Название магазина, Адрес магазина, кол-во штук
+        display_cols = ["№ заказа", "Название магазина", "Адрес магазина", "кол-во штук в заказе", "Номер маршрута"]
+        available_cols = [col for col in display_cols if col in details.columns]
+        
+        st.dataframe(
+            details[available_cols],
+            use_container_width=True,
+            column_config={
+                "кол-во штук в заказе": st.column_config.NumberColumn("Кол-во шт", format="%d"),
+                "№ заказа": "№ заказа",
+                "Название магазина": "Магазин",
+                "Адрес магазина": "Адрес",
+                "Номер маршрута": "Маршрут"
+            }
+        )
+        
+        # Дополнительная статистика
+        total_orders = len(details)
+        total_quantity = details["кол-во штук в заказе"].sum() if "кол-во штук в заказе" in details.columns else 0
+        st.info(f"📊 Итого: {total_orders} заказов, {int(total_quantity)} штук")
     
     if st.button("✅ ОТГРУЗИТЬ", type="primary"):
         if not all([car_number, driver, plomb, trip_number, selected_routes]):
-            st.warning("Заполните все поля")
+            st.warning("Заполните все поля и выберите маршруты")
         else:
-            with st.spinner("Создание PDF..."):
+            with st.spinner("Создание PDF и отгрузка..."):
                 data_for_pdf = not_shipped[not_shipped["Номер маршрута"].isin(selected_routes)]
                 if update_routes_batch(selected_routes, car_number, driver, plomb, trip_number):
                     pdf_file = generate_delivery_pdf(data_for_pdf, selected_routes, driver, car_number, plomb, trip_number)
@@ -425,7 +449,7 @@ elif not st.session_state.get('shipment_completed', False):
                     st.rerun()
 
 elif st.session_state.get('shipment_completed') and st.session_state.get('pdf_file'):
-    st.success(f"✅ Отгружено: {', '.join(str(r) for r in st.session_state.selected_routes)}")
+    st.success(f"✅ Отгружены маршруты: {', '.join(str(r) for r in st.session_state.selected_routes)}")
     
     if os.path.exists(st.session_state.pdf_file):
         with open(st.session_state.pdf_file, "rb") as f:
