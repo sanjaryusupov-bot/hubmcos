@@ -362,6 +362,62 @@ col4.metric("Кол-во шт", int(not_shipped["кол-во штук в зак�
 
 st.divider()
 
+# ==================== СВОДНОЕ ОКНО СВЕРХУ (ДО ВЫБОРА МАРШРУТОВ) ====================
+if not not_shipped.empty:
+    with st.expander("📊 Сводная информация по магазинам (без группировки по заказам)", expanded=False):
+        st.markdown("### Сводка по магазинам и адресам")
+        
+        # Группируем по магазину и адресу, суммируем количество штук
+        summary_by_shop = not_shipped.groupby(["Название магазина", "Адрес магазина"]).agg({
+            "кол-во штук в заказе": "sum",
+            "№ заказа": "count"
+        }).rename(columns={
+            "кол-во штук в заказе": "Всего штук",
+            "№ заказа": "Кол-во заказов"
+        }).reset_index()
+        
+        # Сортируем по убыванию количества штук
+        summary_by_shop = summary_by_shop.sort_values("Всего штук", ascending=False)
+        
+        # Показываем таблицу
+        st.dataframe(
+            summary_by_shop,
+            use_container_width=True,
+            column_config={
+                "Название магазина": st.column_config.TextColumn("Магазин", width="medium"),
+                "Адрес магазина": st.column_config.TextColumn("Адрес", width="large"),
+                "Всего штук": st.column_config.NumberColumn("Всего штук", format="%d"),
+                "Кол-во заказов": st.column_config.NumberColumn("Кол-во заказов", format="%d")
+            },
+            hide_index=True
+        )
+        
+        # Дополнительная статистика
+        total_shops = len(summary_by_shop)
+        total_items_all = summary_by_shop["Всего штук"].sum()
+        total_orders_all = summary_by_shop["Кол-во заказов"].sum()
+        
+        col_a, col_b, col_c = st.columns(3)
+        col_a.metric("🏪 Уникальных магазинов", total_shops)
+        col_b.metric("📦 Всего штук", int(total_items_all))
+        col_c.metric("📄 Всего заказов", int(total_orders_all))
+        
+        st.markdown("---")
+        
+        # Альтернативное представление - список магазинов с деталями
+        st.markdown("### Детальный список по магазинам")
+        for idx, row in summary_by_shop.iterrows():
+            with st.container():
+                st.markdown(f"""
+                **🏪 {row['Название магазина']}**  
+                📍 *{row['Адрес магазина']}*  
+                📦 {int(row['Всего штук'])} шт. | 📄 {int(row['Кол-во заказов'])} заказ(ов)
+                """)
+                st.divider()
+
+st.divider()
+
+# ==================== ОСНОВНОЙ ИНТЕРФЕЙС ====================
 if st.button("🔄 Откатить маршруты", type="secondary"):
     st.session_state.rollback_mode = True
     st.rerun()
@@ -409,7 +465,7 @@ elif not st.session_state.get('shipment_completed', False):
         else:
             selected_routes = []
     
-    # Временное окно с деталями
+    # Временное окно с деталями выбранных маршрутов
     if selected_routes:
         st.subheader("📋 Детали выбранных маршрутов")
         details = not_shipped[not_shipped["Номер маршрута"].isin(selected_routes)]
