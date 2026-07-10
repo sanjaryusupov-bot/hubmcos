@@ -237,16 +237,16 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
 
     styles = getSampleStyleSheet()
     
-    # Стили
+    # Стили — ЖИРНЕЕ И ТЕМНЕЕ
     styleTitle = ParagraphStyle(
         'CustomTitle', 
         parent=styles['Normal'], 
         fontName='HYSMyeongJo-Medium', 
-        fontSize=18, 
-        leading=22, 
+        fontSize=20, 
+        leading=24, 
         alignment=1, 
-        spaceAfter=14, 
-        textColor=colors.HexColor("#1a1a1a"),
+        spaceAfter=16, 
+        textColor=colors.HexColor("#000000"),
         spaceBefore=2
     )
     
@@ -254,57 +254,57 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
         'CustomInfoLabel', 
         parent=styles['Normal'], 
         fontName='HYSMyeongJo-Medium', 
-        fontSize=10, 
-        leading=14, 
+        fontSize=11, 
+        leading=15, 
         spaceAfter=2, 
-        textColor=colors.HexColor("#555555")
+        textColor=colors.HexColor("#333333")
     )
     
     styleInfoValue = ParagraphStyle(
         'CustomInfoValue', 
         parent=styles['Normal'], 
         fontName='HYSMyeongJo-Medium', 
-        fontSize=11, 
-        leading=15, 
+        fontSize=12, 
+        leading=16, 
         spaceAfter=4, 
-        textColor=colors.HexColor("#1a1a1a")
+        textColor=colors.HexColor("#000000")
     )
     
     styleCell = ParagraphStyle(
         'CustomCell', 
         parent=styles['Normal'], 
         fontName='HYSMyeongJo-Medium', 
-        fontSize=8, 
-        leading=10, 
-        textColor=colors.HexColor("#333333")
+        fontSize=9, 
+        leading=12, 
+        textColor=colors.HexColor("#1a1a1a")
     )
     
     styleBold = ParagraphStyle(
         'CustomBold', 
         parent=styles['Normal'], 
         fontName='HYSMyeongJo-Medium', 
-        fontSize=8, 
-        leading=10, 
-        textColor=colors.HexColor("#1a1a1a")
+        fontSize=9, 
+        leading=12, 
+        textColor=colors.HexColor("#000000")
     )
     
     styleHeader = ParagraphStyle(
         'CustomHeader', 
         parent=styles['Normal'], 
         fontName='HYSMyeongJo-Medium', 
-        fontSize=8, 
-        leading=11, 
+        fontSize=9, 
+        leading=13, 
         alignment=1, 
-        textColor=colors.HexColor("#333333")
+        textColor=colors.HexColor("#1a1a1a")
     )
     
-    styleEmptyBox = ParagraphStyle(
-        'EmptyBox',
+    styleSignature = ParagraphStyle(
+        'CustomSignature',
         parent=styles['Normal'],
         fontName='HYSMyeongJo-Medium',
-        fontSize=9,
-        leading=13,
-        textColor=colors.HexColor("#444444")
+        fontSize=10,
+        leading=14,
+        textColor=colors.HexColor("#333333")
     )
 
     elements = []
@@ -334,7 +334,7 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
     
     info_table = Table(
         [info_row1, info_row2], 
-        colWidths=[28*mm, 50*mm, 30*mm, 50*mm, 38*mm, 20*mm]
+        colWidths=[30*mm, 52*mm, 32*mm, 52*mm, 40*mm, 20*mm]
     )
     info_table.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
@@ -347,7 +347,7 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
     elements.append(Spacer(1, 8))
     
     # Разделитель
-    elements.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#bbbbbb")))
+    elements.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#aaaaaa")))
     elements.append(Spacer(1, 8))
 
     # ===== ТАБЛИЦА С 9 КОЛОНКАМИ =====
@@ -389,25 +389,25 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
     
     table.setStyle(TableStyle([
         # Заголовок — светло-серый
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#f0f0f0")),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor("#333333")),
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#e8e8e8")),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor("#1a1a1a")),
         ('FONTNAME', (0,0), (-1,0), 'HYSMyeongJo-Medium'),
-        ('FONTSIZE', (0,0), (-1,0), 8),
+        ('FONTSIZE', (0,0), (-1,0), 9),
         ('ALIGN', (0,0), (-1,0), 'CENTER'),
         ('VALIGN', (0,0), (-1,0), 'MIDDLE'),
         # Данные
         ('FONTNAME', (0,1), (-1,-1), 'HYSMyeongJo-Medium'),
-        ('FONTSIZE', (0,1), (-1,-1), 8),
+        ('FONTSIZE', (0,1), (-1,-1), 9),
         ('VALIGN', (0,1), (-1,-1), 'MIDDLE'),
         # Границы
-        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#d0d0d0")),
-        ('BOX', (0,0), (-1,-1), 1, colors.HexColor("#999999")),
-        ('LINEBELOW', (0,0), (-1,0), 1, colors.HexColor("#888888")),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#c0c0c0")),
+        ('BOX', (0,0), (-1,-1), 1.2, colors.HexColor("#888888")),
+        ('LINEBELOW', (0,0), (-1,0), 1.2, colors.HexColor("#666666")),
         # Отступы
-        ('TOPPADDING', (0,0), (-1,-1), 3),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
-        ('LEFTPADDING', (0,0), (-1,-1), 2),
-        ('RIGHTPADDING', (0,0), (-1,-1), 2),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('LEFTPADDING', (0,0), (-1,-1), 3),
+        ('RIGHTPADDING', (0,0), (-1,-1), 3),
         # Выравнивание
         ('ALIGN', (0,1), (0,-1), 'CENTER'),
         ('ALIGN', (1,1), (2,-1), 'LEFT'),
@@ -415,23 +415,22 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
     ]))
 
     elements.append(table)
-    elements.append(Spacer(1, 10))
+    elements.append(Spacer(1, 16))
     
-    # ===== ПОЛУЧЕНО ПУСТЫХ КОРОБОК (под таблицей) =====
-    received_box_data = [
-        [Paragraph("Получено пустых коробок:", styleEmptyBox), 
-         Paragraph("_________________________________", styleEmptyBox),
-         Paragraph("шт.", styleEmptyBox)]
+    # ===== ПОДПИСИ (ВМЕСТО ПОЛУЧЕНО ПУСТЫХ КОРОБОК) =====
+    sig_data = [
+        [Paragraph("Подпись водителя: _________________________", styleSignature), 
+         Paragraph("Подпись ответственного: _________________________", styleSignature)]
     ]
-    received_box_table = Table(received_box_data, colWidths=[58*mm, 65*mm, 15*mm])
-    received_box_table.setStyle(TableStyle([
+    sig_table = Table(sig_data, colWidths=[130*mm, 130*mm])
+    sig_table.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('ALIGN', (0,0), (0,0), 'LEFT'),
+        ('ALIGN', (1,0), (1,0), 'RIGHT'),
         ('LEFTPADDING', (0,0), (-1,-1), 0),
-        ('RIGHTPADDING', (0,0), (-1,-1), 4),
-        ('TOPPADDING', (0,0), (-1,-1), 6),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+        ('RIGHTPADDING', (0,0), (-1,-1), 0),
     ]))
-    elements.append(received_box_table)
+    elements.append(sig_table)
 
     doc.build(elements)
     return filename
