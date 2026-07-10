@@ -16,7 +16,8 @@ from reportlab.platypus import (
     TableStyle,
     Paragraph,
     Spacer,
-    HRFlowable
+    HRFlowable,
+    KeepTogether
 )
 
 from reportlab.lib import colors
@@ -259,43 +260,137 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
     doc = SimpleDocTemplate(
         filename,
         pagesize=landscape(A4),
-        leftMargin=10*mm,
-        rightMargin=10*mm,
-        topMargin=15*mm,
-        bottomMargin=15*mm
+        leftMargin=12*mm,
+        rightMargin=12*mm,
+        topMargin=12*mm,
+        bottomMargin=12*mm
     )
 
     styles = getSampleStyleSheet()
     
-    styleTitle = ParagraphStyle('CustomTitle', parent=styles['Normal'], fontName='HYSMyeongJo-Medium', fontSize=14, leading=18, alignment=1, spaceAfter=10, textColor=colors.black)
-    styleInfo = ParagraphStyle('CustomInfo', parent=styles['Normal'], fontName='HYSMyeongJo-Medium', fontSize=10, leading=14, spaceAfter=3, textColor=colors.black)
-    styleCell = ParagraphStyle('CustomCell', parent=styles['Normal'], fontName='HYSMyeongJo-Medium', fontSize=9, leading=11, textColor=colors.black)
-    styleBold = ParagraphStyle('CustomBold', parent=styles['Normal'], fontName='HYSMyeongJo-Medium', fontSize=9, leading=11, textColor=colors.black)
-    styleHeader = ParagraphStyle('CustomHeader', parent=styles['Normal'], fontName='HYSMyeongJo-Medium', fontSize=9, leading=12, alignment=1, textColor=colors.black)
+    # Стили
+    styleTitle = ParagraphStyle(
+        'CustomTitle', 
+        parent=styles['Normal'], 
+        fontName='HYSMyeongJo-Medium', 
+        fontSize=18, 
+        leading=22, 
+        alignment=1, 
+        spaceAfter=14, 
+        textColor=colors.HexColor("#1a1a1a"),
+        spaceBefore=6
+    )
+    
+    styleInfoLabel = ParagraphStyle(
+        'CustomInfoLabel', 
+        parent=styles['Normal'], 
+        fontName='HYSMyeongJo-Medium', 
+        fontSize=10, 
+        leading=14, 
+        spaceAfter=2, 
+        textColor=colors.HexColor("#555555")
+    )
+    
+    styleInfoValue = ParagraphStyle(
+        'CustomInfoValue', 
+        parent=styles['Normal'], 
+        fontName='HYSMyeongJo-Medium', 
+        fontSize=11, 
+        leading=15, 
+        spaceAfter=6, 
+        textColor=colors.HexColor("#1a1a1a")
+    )
+    
+    styleCell = ParagraphStyle(
+        'CustomCell', 
+        parent=styles['Normal'], 
+        fontName='HYSMyeongJo-Medium', 
+        fontSize=9, 
+        leading=12, 
+        textColor=colors.HexColor("#333333")
+    )
+    
+    styleBold = ParagraphStyle(
+        'CustomBold', 
+        parent=styles['Normal'], 
+        fontName='HYSMyeongJo-Medium', 
+        fontSize=9, 
+        leading=12, 
+        textColor=colors.HexColor("#1a1a1a")
+    )
+    
+    styleHeader = ParagraphStyle(
+        'CustomHeader', 
+        parent=styles['Normal'], 
+        fontName='HYSMyeongJo-Medium', 
+        fontSize=9, 
+        leading=13, 
+        alignment=1, 
+        textColor=colors.HexColor("#1a1a1a")
+    )
+    
+    styleNote = ParagraphStyle(
+        'CustomNote',
+        parent=styles['Normal'],
+        fontName='HYSMyeongJo-Medium',
+        fontSize=9,
+        leading=12,
+        textColor=colors.HexColor("#666666")
+    )
+    
+    styleSignature = ParagraphStyle(
+        'CustomSignature',
+        parent=styles['Normal'],
+        fontName='HYSMyeongJo-Medium',
+        fontSize=10,
+        leading=14,
+        textColor=colors.HexColor("#1a1a1a")
+    )
 
     elements = []
     total_points = len(all_data)
 
+    # ===== ЗАГОЛОВОК =====
     elements.append(Paragraph("МАРШРУТНЫЙ ЛИСТ ДОСТАВКИ", styleTitle))
     elements.append(Spacer(1, 4))
     
-    elements.append(Paragraph(f"<b>Рейс:</b> {trip_number}", styleInfo))
-    elements.append(Paragraph(f"<b>Водитель:</b> {driver}", styleInfo))
-    elements.append(Paragraph(f"<b>Машина:</b> {car}", styleInfo))
-    elements.append(Paragraph(f"<b>Пломба:</b> {plomb}", styleInfo))
-    elements.append(Paragraph(f"<b>Заказов:</b> {total_points}", styleInfo))
+    # ===== ИНФО-БЛОК В ДВЕ КОЛОНКИ =====
+    info_data_left = [
+        [Paragraph("<b>Рейс:</b>", styleInfoLabel), Paragraph(f"{trip_number}", styleInfoValue)],
+        [Paragraph("<b>Водитель:</b>", styleInfoLabel), Paragraph(f"{driver}", styleInfoValue)],
+    ]
+    info_data_right = [
+        [Paragraph("<b>Машина:</b>", styleInfoLabel), Paragraph(f"{car}", styleInfoValue)],
+        [Paragraph("<b>Пломба:</b>", styleInfoLabel), Paragraph(f"{plomb}", styleInfoValue)],
+    ]
     
-    elements.append(Spacer(1, 6))
-    elements.append(HRFlowable(width="100%", thickness=1.2, color=colors.black))
-    elements.append(Spacer(1, 6))
+    info_table = Table([
+        [Table(info_data_left, colWidths=[28*mm, 55*mm]), 
+         Table(info_data_right, colWidths=[28*mm, 55*mm]),
+         Paragraph(f"<b>Всего заказов:</b> {total_points}", styleInfoValue)]
+    ], colWidths=[85*mm, 85*mm, 60*mm])
+    
+    info_table.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('LEFTPADDING', (0,0), (-1,-1), 0),
+        ('RIGHTPADDING', (0,0), (-1,-1), 8),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+    ]))
+    elements.append(info_table)
+    elements.append(Spacer(1, 8))
+    
+    # Разделитель
+    elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#1a1a1a")))
+    elements.append(Spacer(1, 10))
 
-    headers = ["№ заказа", "Магазин", "Адрес", "Пломба", "Выдано коробок", "Получено коробок", "Подпись, печать, комментарии", "Подпись водителя"]
+    # ===== ТАБЛИЦА =====
+    headers = ["№ заказа", "Магазин", "Адрес", "Пломба", "Выдано<br/>коробок", "Получено<br/>коробок", "Подпись, печать,<br/>комментарии", "Подпись<br/>водителя"]
     table_data = [[Paragraph(h, styleHeader) for h in headers]]
 
     for _, row in all_data.iterrows():
         order_num = f"<b>{row['№ заказа']}</b>"
-        shop_name = str(row["Название магазина"])[:60]
-        address = str(row["Адрес магазина"])[:80]
+        shop_name = str(row["Название магазина"])[:55]
+        address = str(row["Адрес магазина"])[:75]
         
         table_data.append([
             Paragraph(order_num, styleBold),
@@ -308,35 +403,98 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
             Paragraph(" ", styleCell)
         ])
 
-    table = Table(table_data, colWidths=[20*mm, 50*mm, 70*mm, 20*mm, 25*mm, 25*mm, 45*mm, 30*mm], repeatRows=1)
+    # Добавляем пустую строку "ИТОГО" в конце таблицы
+    table_data.append([
+        Paragraph("", styleBold),
+        Paragraph("<b>ИТОГО</b>", styleBold),
+        Paragraph("", styleCell),
+        Paragraph("", styleCell),
+        Paragraph("", styleCell),
+        Paragraph("", styleCell),
+        Paragraph("", styleCell),
+        Paragraph("", styleCell),
+    ])
+
+    table = Table(
+        table_data, 
+        colWidths=[22*mm, 44*mm, 62*mm, 18*mm, 22*mm, 22*mm, 44*mm, 28*mm], 
+        repeatRows=1
+    )
     
     table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#E0E0E0")),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.black),
+        # Заголовок
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#2c2c2c")),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
         ('FONTNAME', (0,0), (-1,0), 'HYSMyeongJo-Medium'),
         ('FONTSIZE', (0,0), (-1,0), 9),
         ('ALIGN', (0,0), (-1,0), 'CENTER'),
         ('VALIGN', (0,0), (-1,0), 'MIDDLE'),
+        # Данные
         ('FONTNAME', (0,1), (-1,-1), 'HYSMyeongJo-Medium'),
         ('FONTSIZE', (0,1), (-1,-1), 9),
         ('VALIGN', (0,1), (-1,-1), 'MIDDLE'),
-        ('GRID', (0,0), (-1,-1), 1, colors.black),
-        ('BOX', (0,0), (-1,-1), 1.5, colors.black),
+        # Границы
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#bbbbbb")),
+        ('BOX', (0,0), (-1,-1), 1.2, colors.HexColor("#1a1a1a")),
+        ('LINEBELOW', (0,0), (-1,0), 1.5, colors.HexColor("#1a1a1a")),
+        # Отступы
         ('TOPPADDING', (0,0), (-1,-1), 5),
         ('BOTTOMPADDING', (0,0), (-1,-1), 5),
         ('LEFTPADDING', (0,0), (-1,-1), 4),
         ('RIGHTPADDING', (0,0), (-1,-1), 4),
+        # Выравнивание
         ('ALIGN', (0,1), (0,-1), 'CENTER'),
         ('ALIGN', (1,1), (2,-1), 'LEFT'),
         ('ALIGN', (3,1), (-1,-1), 'CENTER'),
+        # Строка ИТОГО
+        ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor("#f0f0f0")),
+        ('LINEBELOW', (0,-1), (-1,-1), 1.2, colors.HexColor("#1a1a1a")),
     ]))
 
     elements.append(table)
-    elements.append(Spacer(1, 20))
+    elements.append(Spacer(1, 14))
     
-    styleSignatures = ParagraphStyle('CustomSignatures', parent=styles['Normal'], fontName='HYSMyeongJo-Medium', fontSize=10, leading=14, textColor=colors.black)
+    # ===== ПУСТАЯ СТРОКА «ПОЛУЧЕНО КОРОБОК» =====
+    empty_box_data = [
+        [Paragraph("<b>Получено пустых коробок:</b>", styleSignature), 
+         Paragraph("_________________________________", styleSignature),
+         Paragraph("шт.", styleSignature)]
+    ]
+    empty_box_table = Table(empty_box_data, colWidths=[65*mm, 70*mm, 20*mm])
+    empty_box_table.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('LEFTPADDING', (0,0), (-1,-1), 0),
+        ('RIGHTPADDING', (0,0), (-1,-1), 4),
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+    ]))
+    elements.append(empty_box_table)
+    
+    # Разделитель
+    elements.append(HRFlowable(width="100%", thickness=0.8, color=colors.HexColor("#cccccc")))
+    elements.append(Spacer(1, 12))
+    
+    # ===== ПОДПИСИ =====
+    sig_data = [
+        [Paragraph("<b>Подпись водителя:</b> _________________________", styleSignature), 
+         Paragraph("<b>Подпись ответственного:</b> _________________________", styleSignature)]
+    ]
+    sig_table = Table(sig_data, colWidths=[130*mm, 130*mm])
+    sig_table.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('ALIGN', (0,0), (0,0), 'LEFT'),
+        ('ALIGN', (1,0), (1,0), 'RIGHT'),
+        ('LEFTPADDING', (0,0), (-1,-1), 0),
+        ('RIGHTPADDING', (0,0), (-1,-1), 0),
+    ]))
+    elements.append(sig_table)
+    
+    # Дата и примечание
     elements.append(Spacer(1, 10))
-    elements.append(Paragraph("<b>Подпись водителя:</b> _________________________ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>Подпись ответственного:</b> _________________________", styleSignatures))
+    elements.append(Paragraph(
+        f"<i>Дата формирования: {(datetime.now() + timedelta(hours=5)).strftime('%d.%m.%Y %H:%M')} | Маршруты: {', '.join(str(r) for r in routes_list)}</i>", 
+        styleNote
+    ))
 
     doc.build(elements)
     return filename
