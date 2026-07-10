@@ -34,7 +34,7 @@ except:
     pass
 
 # ---------------- PAGE ----------------
-st.set_page_config(page_title="🚚 Отгрузка маршрутов", layout="wide")
+st.set_page_config(page_title="Отгрузка маршрутов", layout="wide")
 
 # ---------------- SETTINGS ----------------
 SHEET_ID = "1hKZ8ggNLW-OY1bV8xAW7PKl50Fof2co86oxGK92YPAA"
@@ -91,20 +91,20 @@ div[data-testid="stDownloadButton"] > button {
 def connect_sheet():
     try:
         if "gcp_service_account" not in st.secrets:
-            st.error("❌ gcp_service_account не найден в secrets!")
+            st.error("gcp_service_account не найден в secrets!")
             return None
-
+        
         creds_dict = dict(st.secrets["gcp_service_account"])
         if 'private_key' in creds_dict:
             creds_dict['private_key'] = creds_dict['private_key'].replace('\\n', '\n')
-
+        
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         credentials = Credentials.from_service_account_info(creds_dict, scopes=scope)
         client = gspread.authorize(credentials)
         sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
         return sheet
     except Exception as e:
-        st.error(f"❌ Ошибка подключения: {str(e)}")
+        st.error(f"Ошибка подключения: {str(e)}")
         return None
 
 def get_data():
@@ -115,19 +115,18 @@ def get_data():
         data = sheet.get_all_records()
         return pd.DataFrame(data)
     except Exception as e:
-        st.error(f"❌ Ошибка чтения: {str(e)}")
+        st.error(f"Ошибка чтения: {str(e)}")
         return pd.DataFrame()
 
 def update_routes_batch(routes_list, car_number, driver, plomb, trip_number):
-    """Пакетное обновление данных - БЕЗ ПРЕВЫШЕНИЯ ЛИМИТОВ"""
     sheet = connect_sheet()
     if sheet is None:
         return False
-
+    
     try:
         all_data = sheet.get_all_values()
         headers = all_data[0]
-
+        
         col_indices = {
             'status': headers.index("Статус отгрузки"),
             'fact': headers.index("Дата отгрузки факт") if "Дата отгрузки факт" in headers else None,
@@ -136,7 +135,7 @@ def update_routes_batch(routes_list, car_number, driver, plomb, trip_number):
             'plomb': headers.index("№ пломбы") if "№ пломбы" in headers else None,
             'trip': headers.index("Рейс") if "Рейс" in headers else None,
         }
-
+        
         if col_indices['fact'] is None:
             sheet.add_cols(5)
             all_data = sheet.get_all_values()
@@ -146,13 +145,13 @@ def update_routes_batch(routes_list, car_number, driver, plomb, trip_number):
             col_indices['driver'] = headers.index("Водитель")
             col_indices['plomb'] = headers.index("№ пломбы")
             col_indices['trip'] = headers.index("Рейс")
-
+        
         now_utc_plus_5 = datetime.now() + timedelta(hours=5)
         fact_date = now_utc_plus_5.strftime("%d.%m.%Y %H:%M")
-
+        
         updates = []
         route_indices = [str(r) for r in routes_list]
-
+        
         for idx, row in enumerate(all_data[1:], start=2):
             if len(row) > headers.index("Номер маршрута") and str(row[headers.index("Номер маршрута")]) in route_indices:
                 updates.append({'range': f'{chr(65 + col_indices["status"])}{idx}', 'value': "ОТГРУЖЕН"})
@@ -161,7 +160,7 @@ def update_routes_batch(routes_list, car_number, driver, plomb, trip_number):
                 updates.append({'range': f'{chr(65 + col_indices["driver"])}{idx}', 'value': driver})
                 updates.append({'range': f'{chr(65 + col_indices["plomb"])}{idx}', 'value': plomb})
                 updates.append({'range': f'{chr(65 + col_indices["trip"])}{idx}', 'value': trip_number})
-
+        
         if updates:
             batch = []
             for i, update in enumerate(updates):
@@ -170,23 +169,22 @@ def update_routes_batch(routes_list, car_number, driver, plomb, trip_number):
                     sheet.batch_update([{'range': u['range'], 'values': [[u['value']]]} for u in batch])
                     batch = []
                     time.sleep(0.5)
-
+        
         return True
-
+        
     except Exception as e:
-        st.error(f"❌ Ошибка обновления: {str(e)}")
+        st.error(f"Ошибка обновления: {str(e)}")
         return False
 
 def rollback_routes_batch(routes_list):
-    """Пакетный откат маршрутов"""
     sheet = connect_sheet()
     if sheet is None:
         return False
-
+    
     try:
         all_data = sheet.get_all_values()
         headers = all_data[0]
-
+        
         col_indices = {
             'status': headers.index("Статус отгрузки"),
             'fact': headers.index("Дата отгрузки факт"),
@@ -195,10 +193,10 @@ def rollback_routes_batch(routes_list):
             'plomb': headers.index("№ пломбы"),
             'trip': headers.index("Рейс"),
         }
-
+        
         updates = []
         route_strs = [str(r) for r in routes_list]
-
+        
         for idx, row in enumerate(all_data[1:], start=2):
             if len(row) > headers.index("Номер маршрута") and str(row[headers.index("Номер маршрута")]) in route_strs:
                 updates.append({'range': f'{chr(65 + col_indices["status"])}{idx}', 'value': ""})
@@ -207,7 +205,7 @@ def rollback_routes_batch(routes_list):
                 updates.append({'range': f'{chr(65 + col_indices["driver"])}{idx}', 'value': ""})
                 updates.append({'range': f'{chr(65 + col_indices["plomb"])}{idx}', 'value': ""})
                 updates.append({'range': f'{chr(65 + col_indices["trip"])}{idx}', 'value': ""})
-
+        
         if updates:
             batch = []
             for i, update in enumerate(updates):
@@ -216,115 +214,97 @@ def rollback_routes_batch(routes_list):
                     sheet.batch_update([{'range': u['range'], 'values': [[u['value']]]} for u in batch])
                     batch = []
                     time.sleep(0.5)
-
+        
         return True
-
+        
     except Exception as e:
-        st.error(f"❌ Ошибка отката: {str(e)}")
+        st.error(f"Ошибка отката: {str(e)}")
         return False
 
 # ---------------- PDF GENERATION ----------------
 def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number):
     with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
         filename = tmp_file.name
-
+    
     doc = SimpleDocTemplate(
         filename,
         pagesize=landscape(A4),
-        leftMargin=12*mm,
-        rightMargin=12*mm,
-        topMargin=12*mm,
-        bottomMargin=12*mm
+        leftMargin=10*mm,
+        rightMargin=10*mm,
+        topMargin=10*mm,
+        bottomMargin=10*mm
     )
 
     styles = getSampleStyleSheet()
-
+    
     # Стили
     styleTitle = ParagraphStyle(
         'CustomTitle', 
         parent=styles['Normal'], 
         fontName='HYSMyeongJo-Medium', 
-        fontSize=16, 
-        leading=20, 
+        fontSize=18, 
+        leading=22, 
         alignment=1, 
-        spaceAfter=16, 
-        textColor=colors.HexColor("#333333"),
-        spaceBefore=4
+        spaceAfter=14, 
+        textColor=colors.HexColor("#1a1a1a"),
+        spaceBefore=2
     )
-
+    
     styleInfoLabel = ParagraphStyle(
         'CustomInfoLabel', 
         parent=styles['Normal'], 
         fontName='HYSMyeongJo-Medium', 
-        fontSize=9, 
-        leading=13, 
-        spaceAfter=1, 
-        textColor=colors.HexColor("#888888")
+        fontSize=10, 
+        leading=14, 
+        spaceAfter=2, 
+        textColor=colors.HexColor("#555555")
     )
-
+    
     styleInfoValue = ParagraphStyle(
         'CustomInfoValue', 
         parent=styles['Normal'], 
         fontName='HYSMyeongJo-Medium', 
-        fontSize=10, 
-        leading=14, 
+        fontSize=11, 
+        leading=15, 
         spaceAfter=4, 
-        textColor=colors.HexColor("#444444")
+        textColor=colors.HexColor("#1a1a1a")
     )
-
+    
     styleCell = ParagraphStyle(
         'CustomCell', 
         parent=styles['Normal'], 
         fontName='HYSMyeongJo-Medium', 
-        fontSize=8.5, 
-        leading=11, 
-        textColor=colors.HexColor("#555555")
+        fontSize=8, 
+        leading=10, 
+        textColor=colors.HexColor("#333333")
     )
-
+    
     styleBold = ParagraphStyle(
         'CustomBold', 
         parent=styles['Normal'], 
         fontName='HYSMyeongJo-Medium', 
-        fontSize=8.5, 
-        leading=11, 
-        textColor=colors.HexColor("#333333")
+        fontSize=8, 
+        leading=10, 
+        textColor=colors.HexColor("#1a1a1a")
     )
-
+    
     styleHeader = ParagraphStyle(
         'CustomHeader', 
         parent=styles['Normal'], 
         fontName='HYSMyeongJo-Medium', 
-        fontSize=8.5, 
-        leading=12, 
+        fontSize=8, 
+        leading=11, 
         alignment=1, 
-        textColor=colors.HexColor("#555555")
+        textColor=colors.HexColor("#333333")
     )
-
-    styleNote = ParagraphStyle(
-        'CustomNote',
-        parent=styles['Normal'],
-        fontName='HYSMyeongJo-Medium',
-        fontSize=8,
-        leading=11,
-        textColor=colors.HexColor("#999999")
-    )
-
-    styleSignature = ParagraphStyle(
-        'CustomSignature',
+    
+    styleEmptyBox = ParagraphStyle(
+        'EmptyBox',
         parent=styles['Normal'],
         fontName='HYSMyeongJo-Medium',
         fontSize=9,
         leading=13,
-        textColor=colors.HexColor("#666666")
-    )
-
-    styleEmptyBoxLabel = ParagraphStyle(
-        'EmptyBoxLabel',
-        parent=styles['Normal'],
-        fontName='HYSMyeongJo-Medium',
-        fontSize=9,
-        leading=13,
-        textColor=colors.HexColor("#777777")
+        textColor=colors.HexColor("#444444")
     )
 
     elements = []
@@ -332,46 +312,68 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
 
     # ===== ЗАГОЛОВОК =====
     elements.append(Paragraph("МАРШРУТНЫЙ ЛИСТ ДОСТАВКИ", styleTitle))
-    elements.append(Spacer(1, 2))
-
-    # ===== ИНФО-БЛОК В ТРИ КОЛОНКИ =====
-    info_data = [
-        [Paragraph("Рейс:", styleInfoLabel), Paragraph(f"{trip_number}", styleInfoValue),
-         Paragraph("Машина:", styleInfoLabel), Paragraph(f"{car}", styleInfoValue),
-         Paragraph("Всего заказов:", styleInfoLabel), Paragraph(f"{total_points}", styleInfoValue)],
-        [Paragraph("Водитель:", styleInfoLabel), Paragraph(f"{driver}", styleInfoValue),
-         Paragraph("Пломба:", styleInfoLabel), Paragraph(f"{plomb}", styleInfoValue),
-         Paragraph("", styleInfoLabel), Paragraph("", styleInfoValue)],
+    elements.append(Spacer(1, 4))
+    
+    # ===== ИНФО-БЛОК: 3 КОЛОНКИ, ШИРОКИЕ МЕТКИ =====
+    info_row1 = [
+        Paragraph("<b>Рейс:</b>", styleInfoLabel), 
+        Paragraph(f"{trip_number}", styleInfoValue),
+        Paragraph("<b>Машина:</b>", styleInfoLabel), 
+        Paragraph(f"{car}", styleInfoValue),
+        Paragraph("<b>Всего заказов:</b>", styleInfoLabel), 
+        Paragraph(f"{total_points}", styleInfoValue)
     ]
-
-    info_table = Table(info_data, colWidths=[22*mm, 45*mm, 22*mm, 45*mm, 28*mm, 25*mm])
+    info_row2 = [
+        Paragraph("<b>Водитель:</b>", styleInfoLabel), 
+        Paragraph(f"{driver}", styleInfoValue),
+        Paragraph("<b>Пломба:</b>", styleInfoLabel), 
+        Paragraph(f"{plomb}", styleInfoValue),
+        Paragraph("", styleInfoLabel), 
+        Paragraph("", styleInfoValue)
+    ]
+    
+    info_table = Table(
+        [info_row1, info_row2], 
+        colWidths=[28*mm, 50*mm, 30*mm, 50*mm, 38*mm, 20*mm]
+    )
     info_table.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
         ('LEFTPADDING', (0,0), (-1,-1), 0),
-        ('RIGHTPADDING', (0,0), (-1,-1), 12),
+        ('RIGHTPADDING', (0,0), (-1,-1), 8),
         ('BOTTOMPADDING', (0,0), (-1,-1), 0),
         ('TOPPADDING', (0,0), (-1,-1), 0),
     ]))
     elements.append(info_table)
-    elements.append(Spacer(1, 10))
-
+    elements.append(Spacer(1, 8))
+    
     # Разделитель
-    elements.append(HRFlowable(width="100%", thickness=0.8, color=colors.HexColor("#dddddd")))
-    elements.append(Spacer(1, 10))
+    elements.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#bbbbbb")))
+    elements.append(Spacer(1, 8))
 
-    # ===== ТАБЛИЦА =====
-    headers = ["№ заказа", "Магазин", "Адрес", "Пломба", "Выдано<br/>коробок", "Получено<br/>коробок", "Подпись, печать,<br/>комментарии", "Подпись<br/>водителя"]
+    # ===== ТАБЛИЦА С 9 КОЛОНКАМИ =====
+    headers = [
+        "№ заказа", 
+        "Магазин", 
+        "Адрес", 
+        "Пломба", 
+        "Выдано<br/>коробок", 
+        "Получено<br/>коробок",
+        "Выданы<br/>пустые<br/>коробки",
+        "Подпись, печать,<br/>комментарии", 
+        "Подпись<br/>водителя"
+    ]
     table_data = [[Paragraph(h, styleHeader) for h in headers]]
 
     for _, row in all_data.iterrows():
         order_num = f"<b>{row['№ заказа']}</b>"
-        shop_name = str(row["Название магазина"])[:50]
-        address = str(row["Адрес магазина"])[:70]
-
+        shop_name = str(row["Название магазина"])[:45]
+        address = str(row["Адрес магазина"])[:60]
+        
         table_data.append([
             Paragraph(order_num, styleBold),
             Paragraph(shop_name, styleCell),
             Paragraph(address, styleCell),
+            Paragraph(" ", styleCell),
             Paragraph(" ", styleCell),
             Paragraph(" ", styleCell),
             Paragraph(" ", styleCell),
@@ -381,31 +383,31 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
 
     table = Table(
         table_data, 
-        colWidths=[20*mm, 40*mm, 58*mm, 16*mm, 20*mm, 20*mm, 42*mm, 26*mm], 
+        colWidths=[18*mm, 34*mm, 48*mm, 14*mm, 16*mm, 16*mm, 18*mm, 38*mm, 22*mm], 
         repeatRows=1
     )
-
+    
     table.setStyle(TableStyle([
         # Заголовок — светло-серый
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#f5f5f5")),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor("#666666")),
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#f0f0f0")),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor("#333333")),
         ('FONTNAME', (0,0), (-1,0), 'HYSMyeongJo-Medium'),
-        ('FONTSIZE', (0,0), (-1,0), 8.5),
+        ('FONTSIZE', (0,0), (-1,0), 8),
         ('ALIGN', (0,0), (-1,0), 'CENTER'),
         ('VALIGN', (0,0), (-1,0), 'MIDDLE'),
         # Данные
         ('FONTNAME', (0,1), (-1,-1), 'HYSMyeongJo-Medium'),
-        ('FONTSIZE', (0,1), (-1,-1), 8.5),
+        ('FONTSIZE', (0,1), (-1,-1), 8),
         ('VALIGN', (0,1), (-1,-1), 'MIDDLE'),
-        # Границы — светло-серые
-        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#e0e0e0")),
-        ('BOX', (0,0), (-1,-1), 0.8, colors.HexColor("#cccccc")),
-        ('LINEBELOW', (0,0), (-1,0), 0.8, colors.HexColor("#bbbbbb")),
+        # Границы
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#d0d0d0")),
+        ('BOX', (0,0), (-1,-1), 1, colors.HexColor("#999999")),
+        ('LINEBELOW', (0,0), (-1,0), 1, colors.HexColor("#888888")),
         # Отступы
-        ('TOPPADDING', (0,0), (-1,-1), 4),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-        ('LEFTPADDING', (0,0), (-1,-1), 3),
-        ('RIGHTPADDING', (0,0), (-1,-1), 3),
+        ('TOPPADDING', (0,0), (-1,-1), 3),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+        ('LEFTPADDING', (0,0), (-1,-1), 2),
+        ('RIGHTPADDING', (0,0), (-1,-1), 2),
         # Выравнивание
         ('ALIGN', (0,1), (0,-1), 'CENTER'),
         ('ALIGN', (1,1), (2,-1), 'LEFT'),
@@ -413,70 +415,35 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
     ]))
 
     elements.append(table)
-    elements.append(Spacer(1, 12))
-
-    # ===== ПУСТАЯ СТРОКА «ВЫДАНЫ ПУСТЫЕ КОРОБКИ» =====
-    empty_box_data = [
-        [Paragraph("Выданы пустые коробки:", styleEmptyBoxLabel), 
-         Paragraph("_________________________________", styleEmptyBoxLabel),
-         Paragraph("шт.", styleEmptyBoxLabel)]
-    ]
-    empty_box_table = Table(empty_box_data, colWidths=[55*mm, 65*mm, 15*mm])
-    empty_box_table.setStyle(TableStyle([
-        ('VALIGN', (0,0), (-1,-1), 'CENTER'),
-        ('LEFTPADDING', (0,0), (-1,-1), 0),
-        ('RIGHTPADDING', (0,0), (-1,-1), 4),
-        ('TOPPADDING', (0,0), (-1,-1), 5),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
-    ]))
-    elements.append(empty_box_table)
-
-    elements.append(Spacer(1, 8))
-
-    # ===== ПУСТАЯ СТРОКА «ПОЛУЧЕНО ПУСТЫХ КОРОБОК» =====
+    elements.append(Spacer(1, 10))
+    
+    # ===== ПОЛУЧЕНО ПУСТЫХ КОРОБОК (под таблицей) =====
     received_box_data = [
-        [Paragraph("Получено пустых коробок:", styleEmptyBoxLabel), 
-         Paragraph("_________________________________", styleEmptyBoxLabel),
-         Paragraph("шт.", styleEmptyBoxLabel)]
+        [Paragraph("Получено пустых коробок:", styleEmptyBox), 
+         Paragraph("_________________________________", styleEmptyBox),
+         Paragraph("шт.", styleEmptyBox)]
     ]
     received_box_table = Table(received_box_data, colWidths=[58*mm, 65*mm, 15*mm])
     received_box_table.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'CENTER'),
         ('LEFTPADDING', (0,0), (-1,-1), 0),
         ('RIGHTPADDING', (0,0), (-1,-1), 4),
-        ('TOPPADDING', (0,0), (-1,-1), 5),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
     ]))
     elements.append(received_box_table)
-
-    elements.append(Spacer(1, 16))
-
-    # ===== ПОДПИСИ =====
-    sig_data = [
-        [Paragraph("Подпись водителя: _________________________", styleSignature), 
-         Paragraph("Подпись ответственного: _________________________", styleSignature)]
-    ]
-    sig_table = Table(sig_data, colWidths=[130*mm, 130*mm])
-    sig_table.setStyle(TableStyle([
-        ('VALIGN', (0,0), (-1,-1), 'CENTER'),
-        ('ALIGN', (0,0), (0,0), 'LEFT'),
-        ('ALIGN', (1,0), (1,0), 'RIGHT'),
-        ('LEFTPADDING', (0,0), (-1,-1), 0),
-        ('RIGHTPADDING', (0,0), (-1,-1), 0),
-    ]))
-    elements.append(sig_table)
 
     doc.build(elements)
     return filename
 
 # ---------------- MAIN ----------------
-st.title("🚚 Система отгрузки маршрутов")
+st.title("Система отгрузки маршрутов")
 
 with st.spinner("Загрузка данных..."):
     df = get_data()
 
 if df.empty:
-    st.error("❌ Нет данных")
+    st.error("Нет данных")
     st.stop()
 
 not_shipped = df[df["Статус отгрузки"] != "ОТГРУЖЕН"]
@@ -490,11 +457,11 @@ col4.metric("Кол-во шт", int(not_shipped["кол-во штук в зак�
 
 st.divider()
 
-# ==================== СВОДНОЕ ОКНО СВЕРХУ (ДО ВЫБОРА МАРШРУТОВ) ====================
+# ==================== СВОДНОЕ ОКНО СВЕРХУ ====================
 if not not_shipped.empty:
-    with st.expander("📊 Сводная информация по магазинам (без группировки по заказам)", expanded=False):
+    with st.expander("Сводная информация по магазинам (без группировки по заказам)", expanded=False):
         st.markdown("### Сводка по магазинам и адресам")
-
+        
         summary_by_shop = not_shipped.groupby(["Название магазина", "Адрес магазина"]).agg({
             "кол-во штук в заказе": "sum",
             "№ заказа": "count"
@@ -502,9 +469,9 @@ if not not_shipped.empty:
             "кол-во штук в заказе": "Всего штук",
             "№ заказа": "Кол-во заказов"
         }).reset_index()
-
+        
         summary_by_shop = summary_by_shop.sort_values("Всего штук", ascending=False)
-
+        
         st.dataframe(
             summary_by_shop,
             use_container_width=True,
@@ -516,51 +483,51 @@ if not not_shipped.empty:
             },
             hide_index=True
         )
-
+        
         total_shops = len(summary_by_shop)
         total_items_all = summary_by_shop["Всего штук"].sum()
         total_orders_all = summary_by_shop["Кол-во заказов"].sum()
-
+        
         col_a, col_b, col_c = st.columns(3)
-        col_a.metric("🏪 Уникальных магазинов", total_shops)
-        col_b.metric("📦 Всего штук", int(total_items_all))
-        col_c.metric("📄 Всего заказов", int(total_orders_all))
-
+        col_a.metric("Уникальных магазинов", total_shops)
+        col_b.metric("Всего штук", int(total_items_all))
+        col_c.metric("Всего заказов", int(total_orders_all))
+        
         st.markdown("---")
-
+        
         st.markdown("### Детальный список по магазинам")
         for idx, row in summary_by_shop.iterrows():
             with st.container():
                 st.markdown(f"""
-                **🏪 {row['Название магазина']}**  
-                📍 *{row['Адрес магазина']}*  
-                📦 {int(row['Всего штук'])} шт. | 📄 {int(row['Кол-во заказов'])} заказ(ов)
+                **{row['Название магазина']}**  
+                *{row['Адрес магазина']}*  
+                {int(row['Всего штук'])} шт. | {int(row['Кол-во заказов'])} заказ(ов)
                 """)
                 st.divider()
 
 st.divider()
 
 # ==================== ОСНОВНОЙ ИНТЕРФЕЙС ====================
-if st.button("🔄 Откатить маршруты", type="secondary"):
+if st.button("Откатить маршруты", type="secondary"):
     st.session_state.rollback_mode = True
     st.rerun()
 
 if st.session_state.get('rollback_mode', False):
-    st.subheader("🔄 Режим отката")
+    st.subheader("Режим отката")
     shipped_routes = shipped[shipped["Статус отгрузки"] == "ОТГРУЖЕН"]
-
+    
     if len(shipped_routes) > 0:
         routes_for_rollback = sorted(shipped_routes["Номер маршрута"].dropna().unique())
         routes_to_rollback = st.multiselect("Выберите маршруты для отката", options=routes_for_rollback)
-
+        
         col1, col2 = st.columns(2)
-        if col1.button("✅ Подтвердить откат"):
+        if col1.button("Подтвердить откат"):
             if routes_to_rollback and rollback_routes_batch(routes_to_rollback):
-                st.success(f"✅ Откачено {len(routes_to_rollback)} маршрутов")
+                st.success(f"Откачено {len(routes_to_rollback)} маршрутов")
                 st.session_state.rollback_mode = False
                 time.sleep(1)
                 st.rerun()
-        if col2.button("❌ Отмена"):
+        if col2.button("Отмена"):
             st.session_state.rollback_mode = False
             st.rerun()
     else:
@@ -571,29 +538,29 @@ if st.session_state.get('rollback_mode', False):
 
 elif not st.session_state.get('shipment_completed', False):
     col1, col2 = st.columns(2)
-
+    
     with col1:
-        st.subheader("🚛 Данные")
+        st.subheader("Данные")
         car_number = st.text_input("Номер машины")
         driver = st.text_input("Водитель")
         plomb = st.text_input("№ пломбы")
         trip_number = st.text_input("Рейс")
-
+    
     with col2:
-        st.subheader("📦 Маршруты")
+        st.subheader("Маршруты")
         if not not_shipped.empty:
             routes = sorted(not_shipped["Номер маршрута"].dropna().unique())
             selected_routes = st.multiselect("Выберите маршруты", routes)
         else:
             selected_routes = []
-
+    
     if selected_routes:
-        st.subheader("📋 Детали выбранных маршрутов")
+        st.subheader("Детали выбранных маршрутов")
         details = not_shipped[not_shipped["Номер маршрута"].isin(selected_routes)]
-
+        
         display_cols = ["№ заказа", "Название магазина", "Адрес магазина", "кол-во штук в заказе", "Номер маршрута"]
         available_cols = [col for col in display_cols if col in details.columns]
-
+        
         st.dataframe(
             details[available_cols],
             use_container_width=True,
@@ -605,12 +572,12 @@ elif not st.session_state.get('shipment_completed', False):
                 "Номер маршрута": "Маршрут"
             }
         )
-
+        
         total_orders = len(details)
         total_quantity = details["кол-во штук в заказе"].sum() if "кол-во штук в заказе" in details.columns else 0
-        st.info(f"📊 Итого: {total_orders} заказов, {int(total_quantity)} штук")
-
-    if st.button("✅ ОТГРУЗИТЬ", type="primary"):
+        st.info(f"Итого: {total_orders} заказов, {int(total_quantity)} штук")
+    
+    if st.button("ОТГРУЗИТЬ", type="primary"):
         if not all([car_number, driver, plomb, trip_number, selected_routes]):
             st.warning("Заполните все поля и выберите маршруты")
         else:
@@ -624,13 +591,13 @@ elif not st.session_state.get('shipment_completed', False):
                     st.rerun()
 
 elif st.session_state.get('shipment_completed') and st.session_state.get('pdf_file'):
-    st.success(f"✅ Отгружены маршруты: {', '.join(str(r) for r in st.session_state.selected_routes)}")
-
+    st.success(f"Отгружены маршруты: {', '.join(str(r) for r in st.session_state.selected_routes)}")
+    
     if os.path.exists(st.session_state.pdf_file):
         with open(st.session_state.pdf_file, "rb") as f:
-            st.download_button("📄 Скачать PDF", f, file_name=f"route_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf", mime="application/pdf")
-
-    if st.button("🔄 Новая отгрузка"):
+            st.download_button("Скачать PDF", f, file_name=f"route_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf", mime="application/pdf")
+    
+    if st.button("Новая отгрузка"):
         try:
             if st.session_state.pdf_file and os.path.exists(st.session_state.pdf_file):
                 os.unlink(st.session_state.pdf_file)
