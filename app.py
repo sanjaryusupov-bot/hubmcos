@@ -51,11 +51,13 @@ except Exception:
     pass
 
 # ---------------- PDF PALETTE ----------------
-PDF_ACCENT = colors.HexColor("#1E3A5F")       # глубокий тёмно-синий — акцент
-PDF_ACCENT_LIGHT = colors.HexColor("#EAF0F7")  # светлый фон инфо-блока
-PDF_ACCENT_SOFT = colors.HexColor("#4A6FA5")   # мягкий синий для подписей
-PDF_BORDER = colors.HexColor("#C7D2E0")
-PDF_ROW_ALT = colors.HexColor("#F5F8FC")
+# Светло-серая палитра — оптимизирована под чёрно-белую печать
+# (тёмные плашки быстро съедают картридж и дают "грязные" сканы).
+PDF_ACCENT = colors.HexColor("#B0B0B0")        # светло-серый — акцент/шапки/рамки
+PDF_ACCENT_LIGHT = colors.HexColor("#F2F2F2")  # почти белый фон инфо-блока
+PDF_ACCENT_SOFT = colors.HexColor("#707070")   # средне-серый для подписей
+PDF_BORDER = colors.HexColor("#C7C7C7")
+PDF_ROW_ALT = colors.HexColor("#F7F7F7")
 PDF_TEXT = colors.HexColor("#1F2937")
 PDF_TEXT_MUTED = colors.HexColor("#5B6472")
 
@@ -93,6 +95,9 @@ h1 {
     color: #1E293B;
     font-weight: 800;
     letter-spacing: -0.5px;
+    padding-bottom: 10px;
+    border-bottom: 3px solid #2C5282;
+    display: inline-block;
 }
 
 h2, h3 { color: #1E293B; font-weight: 700; }
@@ -102,6 +107,7 @@ div[data-testid="metric-container"] {
     border-radius: 18px;
     padding: 22px 20px;
     border: 1px solid #E5E9F2;
+    border-left: 5px solid #2C5282;
     box-shadow: 0 4px 16px rgba(30, 41, 59, 0.06);
 }
 
@@ -119,6 +125,7 @@ div[data-testid="stExpander"] {
     background: white;
     border-radius: 16px;
     border: 1px solid #E5E9F2;
+    border-left: 5px solid #0F766E;
     box-shadow: 0 2px 10px rgba(30, 41, 59, 0.04);
 }
 
@@ -166,6 +173,15 @@ div[data-testid="stDataFrame"] {
     border-radius: 14px;
     overflow: hidden;
     border: 1px solid #E5E9F2;
+}
+
+div[data-testid="stTextInput"] > div {
+    border-radius: 10px;
+}
+
+div[data-testid="stTextInput"] input {
+    border: 1.5px solid #CBD5E1;
+    border-radius: 10px;
 }
 
 hr { border-color: #E2E8F0 !important; }
@@ -373,10 +389,10 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
         'CustomTitle',
         parent=styles['Normal'],
         fontName=FONT_BOLD,
-        fontSize=20,
-        leading=24,
+        fontSize=15,
+        leading=18,
         alignment=1,
-        textColor=colors.white,
+        textColor=PDF_TEXT,
     )
 
     styleInfoLabel = ParagraphStyle(
@@ -414,7 +430,7 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
         fontName=FONT_BOLD,
         fontSize=10,
         leading=13,
-        textColor=PDF_ACCENT
+        textColor=PDF_TEXT
     )
 
     styleHeader = ParagraphStyle(
@@ -424,7 +440,7 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
         fontSize=9.5,
         leading=13,
         alignment=1,
-        textColor=colors.white
+        textColor=PDF_TEXT
     )
 
     styleSignature = ParagraphStyle(
@@ -439,21 +455,21 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
     elements = []
     total_points = len(all_data)
 
-    # ===== ЗАГОЛОВОК В ЦВЕТНОЙ ПЛАШКЕ =====
+    # ===== ЗАГОЛОВОК В ПЛАШКЕ (компактнее, светло-серый фон под ч/б печать) =====
     title_table = Table(
         [[Paragraph("МАРШРУТНЫЙ ЛИСТ ДОСТАВКИ", styleTitle)]],
         colWidths=[281 * mm]
     )
     title_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, -1), PDF_ACCENT),
-        ('TOPPADDING', (0, 0), (-1, -1), 12),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+        ('TOPPADDING', (0, 0), (-1, -1), 7),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
         ('LEFTPADDING', (0, 0), (-1, -1), 0),
         ('RIGHTPADDING', (0, 0), (-1, -1), 0),
         ('ROUNDEDCORNERS', [8, 8, 8, 8]),
     ]))
     elements.append(title_table)
-    elements.append(Spacer(1, 12))
+    elements.append(Spacer(1, 10))
 
     # ===== ИНФО-БЛОК В СВЕТЛОЙ ПЛАШКЕ =====
     info_row1 = [
@@ -468,6 +484,9 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
         Paragraph("ВОДИТЕЛЬ", styleInfoLabel),
         Paragraph(f"{driver}", styleInfoValue),
         Paragraph("ПЛОМБА", styleInfoLabel),
+        # Значение пломбы теперь занимает объединённую (SPAN) ширину трёх
+        # последних колонок — ложится горизонтально, а не переносится
+        # вертикально по строкам.
         Paragraph(f"{plomb}", styleInfoValue),
         Paragraph("", styleInfoLabel),
         Paragraph("", styleInfoValue)
@@ -485,10 +504,13 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
         ('TOPPADDING', (0, 0), (-1, -1), 8),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
         ('LINEBELOW', (0, 0), (-1, 0), 0.6, PDF_BORDER),
+        # Растягиваем ячейку значения ПЛОМБЫ (col 3) через оставшиеся
+        # пустые колонки (4,5) во второй строке — даёт ей ~122мм вместо 55мм.
+        ('SPAN', (3, 1), (5, 1)),
     ]))
     elements.append(info_table)
     elements.append(Spacer(1, 4))
-    elements.append(HRFlowable(width="100%", thickness=2, color=PDF_ACCENT))
+    elements.append(HRFlowable(width="100%", thickness=1.5, color=PDF_ACCENT))
     elements.append(Spacer(1, 12))
 
     # ===== ТАБЛИЦА С ЗАКАЗАМИ =====
@@ -522,24 +544,28 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
             Paragraph(" ", styleCell)
         ])
 
+    # Ширины колонок пересчитаны так, чтобы таблица растягивалась на всю
+    # ширину листа (281мм, как и плашка заголовка), а узким колонкам
+    # (Пломба, Выдано/Получено коробок и т.д.) досталось больше места —
+    # заголовки переносятся аккуратнее, без "лесенки" по одной букве в строке.
     table = Table(
         table_data,
-        colWidths=[20 * mm, 38 * mm, 55 * mm, 15 * mm, 17 * mm, 17 * mm, 20 * mm, 42 * mm, 24 * mm],
+        colWidths=[22 * mm, 35 * mm, 60 * mm, 20 * mm, 22 * mm, 22 * mm, 25 * mm, 45 * mm, 30 * mm],
         repeatRows=1
     )
 
     table.setStyle(TableStyle([
-        # Заголовок — акцентный тёмно-синий фон, белый текст
+        # Заголовок — светло-серый фон (под ч/б печать), тёмный текст
         ('BACKGROUND', (0, 0), (-1, 0), PDF_ACCENT),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('TEXTCOLOR', (0, 0), (-1, 0), PDF_TEXT),
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
         ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
         # Чередование строк
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, PDF_ROW_ALT]),
         ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
-        # Границы — мягкие, светлые
+        # Границы — мягкие, светло-серые
         ('GRID', (0, 0), (-1, -1), 0.6, PDF_BORDER),
-        ('BOX', (0, 0), (-1, -1), 1.2, PDF_ACCENT),
+        ('BOX', (0, 0), (-1, -1), 1, PDF_ACCENT),
         # Отступы
         ('TOPPADDING', (0, 0), (-1, -1), 6),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
