@@ -23,14 +23,41 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.units import mm
 
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase import pdfmetrics
 
 # ---------------- PDF FONT ----------------
+# DejaVuSans нормально поддерживает кириллицу (в отличие от корейского
+# CID-шрифта HYSMyeongJo-Medium, который давал огромные разрядки между
+# буквами). Шрифт ставится в систему через packages.txt (fonts-dejavu).
+FONT_REGULAR = "Helvetica"
+FONT_BOLD = "Helvetica-Bold"
+
+_DEJAVU_REGULAR = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+_DEJAVU_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
 try:
-    pdfmetrics.registerFont(UnicodeCIDFont('HYSMyeongJo-Medium'))
+    if os.path.exists(_DEJAVU_REGULAR) and os.path.exists(_DEJAVU_BOLD):
+        pdfmetrics.registerFont(TTFont("DejaVuSans", _DEJAVU_REGULAR))
+        pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", _DEJAVU_BOLD))
+        FONT_REGULAR = "DejaVuSans"
+        FONT_BOLD = "DejaVuSans-Bold"
+    else:
+        pdfmetrics.registerFont(UnicodeCIDFont('HYSMyeongJo-Medium'))
+        FONT_REGULAR = "HYSMyeongJo-Medium"
+        FONT_BOLD = "HYSMyeongJo-Medium"
 except Exception:
     pass
+
+# ---------------- PDF PALETTE ----------------
+PDF_ACCENT = colors.HexColor("#1E3A5F")       # глубокий тёмно-синий — акцент
+PDF_ACCENT_LIGHT = colors.HexColor("#EAF0F7")  # светлый фон инфо-блока
+PDF_ACCENT_SOFT = colors.HexColor("#4A6FA5")   # мягкий синий для подписей
+PDF_BORDER = colors.HexColor("#C7D2E0")
+PDF_ROW_ALT = colors.HexColor("#F5F8FC")
+PDF_TEXT = colors.HexColor("#1F2937")
+PDF_TEXT_MUTED = colors.HexColor("#5B6472")
 
 # ---------------- PAGE ----------------
 st.set_page_config(page_title="Отгрузка маршрутов", layout="wide")
@@ -60,15 +87,43 @@ if 'rollback_mode' not in st.session_state:
 # ---------------- CSS ----------------
 st.markdown("""
 <style>
-.main { background-color: #F3F4F6; }
+.main { background-color: #F4F6FA; }
+
+h1 {
+    color: #1E293B;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+}
+
+h2, h3 { color: #1E293B; font-weight: 700; }
+
 div[data-testid="metric-container"] {
     background: white;
+    border-radius: 18px;
+    padding: 22px 20px;
+    border: 1px solid #E5E9F2;
+    box-shadow: 0 4px 16px rgba(30, 41, 59, 0.06);
+}
+
+div[data-testid="stMetricLabel"] {
+    color: #64748B;
+    font-weight: 600;
+}
+
+div[data-testid="stMetricValue"] {
+    color: #1E293B;
+    font-weight: 800;
+}
+
+div[data-testid="stExpander"] {
+    background: white;
     border-radius: 16px;
-    padding: 20px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+    border: 1px solid #E5E9F2;
+    box-shadow: 0 2px 10px rgba(30, 41, 59, 0.04);
 }
+
 .stButton>button {
-    background-color: #16A34A;
+    background: linear-gradient(135deg, #1E3A5F 0%, #2C5282 100%);
     color: white;
     border-radius: 12px;
     border: none;
@@ -76,10 +131,16 @@ div[data-testid="metric-container"] {
     font-weight: 700;
     width: 100%;
     font-size: 16px;
+    transition: all 0.15s ease;
+    box-shadow: 0 2px 8px rgba(30, 58, 95, 0.25);
 }
-.stButton>button:hover { background-color: #15803D; }
+.stButton>button:hover {
+    background: linear-gradient(135deg, #16304E 0%, #244873 100%);
+    box-shadow: 0 4px 12px rgba(30, 58, 95, 0.35);
+}
+
 div[data-testid="stDownloadButton"] > button {
-    background-color: #3B82F6;
+    background: linear-gradient(135deg, #0F766E 0%, #14958A 100%);
     color: white;
     border-radius: 12px;
     border: none;
@@ -87,10 +148,27 @@ div[data-testid="stDownloadButton"] > button {
     font-weight: 700;
     width: 100%;
     font-size: 16px;
+    box-shadow: 0 2px 8px rgba(15, 118, 110, 0.25);
 }
+div[data-testid="stDownloadButton"] > button:hover {
+    background: linear-gradient(135deg, #0B5F58 0%, #107D74 100%);
+}
+
 .stButton > button[kind="secondary"] {
-    background-color: #EF4444;
+    background: linear-gradient(135deg, #B91C1C 0%, #DC2626 100%);
+    box-shadow: 0 2px 8px rgba(185, 28, 28, 0.25);
 }
+.stButton > button[kind="secondary"]:hover {
+    background: linear-gradient(135deg, #991717 0%, #C31F1F 100%);
+}
+
+div[data-testid="stDataFrame"] {
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid #E5E9F2;
+}
+
+hr { border-color: #E2E8F0 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -294,90 +372,102 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
     styleTitle = ParagraphStyle(
         'CustomTitle',
         parent=styles['Normal'],
-        fontName='HYSMyeongJo-Medium',
-        fontSize=22,
-        leading=26,
+        fontName=FONT_BOLD,
+        fontSize=20,
+        leading=24,
         alignment=1,
-        spaceAfter=18,
-        textColor=colors.HexColor("#000000"),
-        spaceBefore=2
+        textColor=colors.white,
     )
 
     styleInfoLabel = ParagraphStyle(
         'CustomInfoLabel',
         parent=styles['Normal'],
-        fontName='HYSMyeongJo-Medium',
-        fontSize=12,
-        leading=16,
+        fontName=FONT_BOLD,
+        fontSize=10.5,
+        leading=14,
         spaceAfter=2,
-        textColor=colors.HexColor("#222222")
+        textColor=PDF_ACCENT_SOFT
     )
 
     styleInfoValue = ParagraphStyle(
         'CustomInfoValue',
         parent=styles['Normal'],
-        fontName='HYSMyeongJo-Medium',
+        fontName=FONT_BOLD,
         fontSize=13,
         leading=17,
         spaceAfter=4,
-        textColor=colors.HexColor("#000000")
+        textColor=PDF_TEXT
     )
 
     styleCell = ParagraphStyle(
         'CustomCell',
         parent=styles['Normal'],
-        fontName='HYSMyeongJo-Medium',
+        fontName=FONT_REGULAR,
         fontSize=10,
         leading=13,
-        textColor=colors.HexColor("#000000")
+        textColor=PDF_TEXT
     )
 
     styleBold = ParagraphStyle(
         'CustomBold',
         parent=styles['Normal'],
-        fontName='HYSMyeongJo-Medium',
+        fontName=FONT_BOLD,
         fontSize=10,
         leading=13,
-        textColor=colors.HexColor("#000000")
+        textColor=PDF_ACCENT
     )
 
     styleHeader = ParagraphStyle(
         'CustomHeader',
         parent=styles['Normal'],
-        fontName='HYSMyeongJo-Medium',
-        fontSize=10,
-        leading=14,
+        fontName=FONT_BOLD,
+        fontSize=9.5,
+        leading=13,
         alignment=1,
-        textColor=colors.HexColor("#000000")
+        textColor=colors.white
     )
 
     styleSignature = ParagraphStyle(
         'CustomSignature',
         parent=styles['Normal'],
-        fontName='HYSMyeongJo-Medium',
+        fontName=FONT_REGULAR,
         fontSize=11,
         leading=15,
-        textColor=colors.HexColor("#222222")
+        textColor=PDF_TEXT_MUTED
     )
 
     elements = []
     total_points = len(all_data)
 
-    elements.append(Paragraph("МАРШРУТНЫЙ ЛИСТ ДОСТАВКИ", styleTitle))
-    elements.append(Spacer(1, 4))
+    # ===== ЗАГОЛОВОК В ЦВЕТНОЙ ПЛАШКЕ =====
+    title_table = Table(
+        [[Paragraph("МАРШРУТНЫЙ ЛИСТ ДОСТАВКИ", styleTitle)]],
+        colWidths=[281 * mm]
+    )
+    title_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), PDF_ACCENT),
+        ('TOPPADDING', (0, 0), (-1, -1), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ('ROUNDEDCORNERS', [8, 8, 8, 8]),
+    ]))
+    elements.append(title_table)
+    elements.append(Spacer(1, 12))
 
+    # ===== ИНФО-БЛОК В СВЕТЛОЙ ПЛАШКЕ =====
     info_row1 = [
-        Paragraph("<b>Рейс:</b>", styleInfoLabel),
+        Paragraph("РЕЙС", styleInfoLabel),
         Paragraph(f"{trip_number}", styleInfoValue),
-        Paragraph("<b>Машина:</b>", styleInfoLabel),
+        Paragraph("МАШИНА", styleInfoLabel),
         Paragraph(f"{car}", styleInfoValue),
-        Paragraph("<b>Всего заказов:</b>", styleInfoLabel),
+        Paragraph("ВСЕГО ЗАКАЗОВ", styleInfoLabel),
         Paragraph(f"{total_points}", styleInfoValue)
     ]
     info_row2 = [
-        Paragraph("<b>Водитель:</b>", styleInfoLabel),
+        Paragraph("ВОДИТЕЛЬ", styleInfoLabel),
         Paragraph(f"{driver}", styleInfoValue),
-        Paragraph("<b>Пломба:</b>", styleInfoLabel),
+        Paragraph("ПЛОМБА", styleInfoLabel),
         Paragraph(f"{plomb}", styleInfoValue),
         Paragraph("", styleInfoLabel),
         Paragraph("", styleInfoValue)
@@ -389,17 +479,19 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
     )
     info_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('BACKGROUND', (0, 0), (-1, -1), PDF_ACCENT_LIGHT),
+        ('LEFTPADDING', (0, 0), (-1, -1), 10),
         ('RIGHTPADDING', (0, 0), (-1, -1), 10),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
-        ('TOPPADDING', (0, 0), (-1, -1), 0),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('LINEBELOW', (0, 0), (-1, 0), 0.6, PDF_BORDER),
     ]))
     elements.append(info_table)
-    elements.append(Spacer(1, 10))
+    elements.append(Spacer(1, 4))
+    elements.append(HRFlowable(width="100%", thickness=2, color=PDF_ACCENT))
+    elements.append(Spacer(1, 12))
 
-    elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#888888")))
-    elements.append(Spacer(1, 10))
-
+    # ===== ТАБЛИЦА С ЗАКАЗАМИ =====
     headers = [
         "№ заказа",
         "Магазин",
@@ -414,7 +506,7 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
     table_data = [[Paragraph(h, styleHeader) for h in headers]]
 
     for _, row in all_data.iterrows():
-        order_num = f"<b>{row.get('№ заказа', '')}</b>"
+        order_num = f"{row.get('№ заказа', '')}"
         shop_name = str(row.get("Название магазина", ""))[:50]
         address = str(row.get("Адрес магазина", ""))[:70]
 
@@ -437,30 +529,32 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
     )
 
     table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#e0e0e0")),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor("#000000")),
-        ('FONTNAME', (0, 0), (-1, 0), 'HYSMyeongJo-Medium'),
-        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        # Заголовок — акцентный тёмно-синий фон, белый текст
+        ('BACKGROUND', (0, 0), (-1, 0), PDF_ACCENT),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
         ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
-        ('FONTNAME', (0, 1), (-1, -1), 'HYSMyeongJo-Medium'),
-        ('FONTSIZE', (0, 1), (-1, -1), 10),
+        # Чередование строк
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, PDF_ROW_ALT]),
         ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
-        ('GRID', (0, 0), (-1, -1), 0.8, colors.HexColor("#b0b0b0")),
-        ('BOX', (0, 0), (-1, -1), 1.5, colors.HexColor("#666666")),
-        ('LINEBELOW', (0, 0), (-1, 0), 1.5, colors.HexColor("#444444")),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-        ('LEFTPADDING', (0, 0), (-1, -1), 4),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        # Границы — мягкие, светлые
+        ('GRID', (0, 0), (-1, -1), 0.6, PDF_BORDER),
+        ('BOX', (0, 0), (-1, -1), 1.2, PDF_ACCENT),
+        # Отступы
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+        # Выравнивание
         ('ALIGN', (0, 1), (0, -1), 'CENTER'),
         ('ALIGN', (1, 1), (2, -1), 'LEFT'),
         ('ALIGN', (3, 1), (-1, -1), 'CENTER'),
     ]))
 
     elements.append(table)
-    elements.append(Spacer(1, 20))
+    elements.append(Spacer(1, 22))
 
+    # ===== ПОДПИСИ =====
     sig_data = [
         [Paragraph("Подпись водителя: _________________________", styleSignature),
          Paragraph("Подпись ответственного: _________________________", styleSignature)]
