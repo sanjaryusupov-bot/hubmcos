@@ -3,4 +3,4 @@ pandas
 gspread
 google-auth
 oauth2client
-reportlab
+reportlab>=4.2.5
