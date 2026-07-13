@@ -47,6 +47,16 @@ try:
         pdfmetrics.registerFont(UnicodeCIDFont('HYSMyeongJo-Medium'))
         FONT_REGULAR = "HYSMyeongJo-Medium"
         FONT_BOLD = "HYSMyeongJo-Medium"
+    # Регистрируем семейство шрифтов, чтобы внутри Paragraph работали
+    # инлайн-теги <b>...</b> (переключение на жирное начертание для
+    # последних 4 цифр номера заказа), а не только фиксированный fontName.
+    pdfmetrics.registerFontFamily(
+        FONT_REGULAR,
+        normal=FONT_REGULAR,
+        bold=FONT_BOLD,
+        italic=FONT_REGULAR,
+        boldItalic=FONT_BOLD,
+    )
 except Exception:
     pass
 
@@ -374,23 +384,34 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
     with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
         filename = tmp_file.name
 
+    # Поля увеличены до 10мм — у большинства принтеров край листа
+    # физически непечатаемый (обычно 3-5мм), и старые поля в 8мм вкупе
+    # с шириной таблицы ровно "в притык" к листу приводили к обрезке
+    # правого края (столбца "Подпись водителя") при печати.
+    PAGE_MARGIN = 10 * mm
     doc = SimpleDocTemplate(
         filename,
         pagesize=landscape(A4),
-        leftMargin=8 * mm,
-        rightMargin=8 * mm,
+        leftMargin=PAGE_MARGIN,
+        rightMargin=PAGE_MARGIN,
         topMargin=8 * mm,
-        bottomMargin=8 * mm
+        bottomMargin=10 * mm
     )
+
+    # Реальная печатная область landscape A4: 297мм - 2*10мм = 277мм.
+    # Берём с запасом 268мм, чтобы гарантированно ничего не обрезалось
+    # на реальном принтере (не полагаемся на "ровно по линейке").
+    CONTENT_WIDTH = 268 * mm
 
     styles = getSampleStyleSheet()
 
+    # Шрифты уменьшены по всему шаблону
     styleTitle = ParagraphStyle(
         'CustomTitle',
         parent=styles['Normal'],
         fontName=FONT_BOLD,
-        fontSize=15,
-        leading=18,
+        fontSize=13,
+        leading=16,
         alignment=1,
         textColor=PDF_TEXT,
     )
@@ -399,8 +420,8 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
         'CustomInfoLabel',
         parent=styles['Normal'],
         fontName=FONT_BOLD,
-        fontSize=10.5,
-        leading=14,
+        fontSize=9,
+        leading=12,
         spaceAfter=2,
         textColor=PDF_ACCENT_SOFT
     )
@@ -409,9 +430,9 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
         'CustomInfoValue',
         parent=styles['Normal'],
         fontName=FONT_BOLD,
-        fontSize=13,
-        leading=17,
-        spaceAfter=4,
+        fontSize=11.5,
+        leading=15,
+        spaceAfter=3,
         textColor=PDF_TEXT
     )
 
@@ -419,17 +440,20 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
         'CustomCell',
         parent=styles['Normal'],
         fontName=FONT_REGULAR,
-        fontSize=10,
-        leading=13,
+        fontSize=9,
+        leading=12,
         textColor=PDF_TEXT
     )
 
-    styleBold = ParagraphStyle(
-        'CustomBold',
+    # Стиль номера заказа: базовое начертание обычное, а последние 4 цифры
+    # выделяются тегом <b>...</b> прямо в тексте — работает благодаря
+    # registerFontFamily() у DejaVuSans выше.
+    styleOrderNum = ParagraphStyle(
+        'CustomOrderNum',
         parent=styles['Normal'],
-        fontName=FONT_BOLD,
-        fontSize=10,
-        leading=13,
+        fontName=FONT_REGULAR,
+        fontSize=9.5,
+        leading=12,
         textColor=PDF_TEXT
     )
 
@@ -437,8 +461,8 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
         'CustomHeader',
         parent=styles['Normal'],
         fontName=FONT_BOLD,
-        fontSize=9.5,
-        leading=13,
+        fontSize=8.5,
+        leading=11,
         alignment=1,
         textColor=PDF_TEXT
     )
@@ -447,31 +471,31 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
         'CustomSignature',
         parent=styles['Normal'],
         fontName=FONT_REGULAR,
-        fontSize=11,
-        leading=15,
+        fontSize=10,
+        leading=13,
         textColor=PDF_TEXT_MUTED
     )
 
     elements = []
     total_points = len(all_data)
 
-    # ===== ЗАГОЛОВОК В ПЛАШКЕ (компактнее, светло-серый фон под ч/б печать) =====
+    # ===== ЗАГОЛОВОК В ПЛАШКЕ =====
     title_table = Table(
         [[Paragraph("МАРШРУТНЫЙ ЛИСТ ДОСТАВКИ", styleTitle)]],
-        colWidths=[281 * mm]
+        colWidths=[CONTENT_WIDTH]
     )
     title_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, -1), PDF_ACCENT),
-        ('TOPPADDING', (0, 0), (-1, -1), 7),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
         ('LEFTPADDING', (0, 0), (-1, -1), 0),
         ('RIGHTPADDING', (0, 0), (-1, -1), 0),
         ('ROUNDEDCORNERS', [8, 8, 8, 8]),
     ]))
     elements.append(title_table)
-    elements.append(Spacer(1, 10))
+    elements.append(Spacer(1, 8))
 
-    # ===== ИНФО-БЛОК В СВЕТЛОЙ ПЛАШКЕ =====
+    # ===== ИНФО-БЛОК =====
     info_row1 = [
         Paragraph("РЕЙС", styleInfoLabel),
         Paragraph(f"{trip_number}", styleInfoValue),
@@ -484,34 +508,36 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
         Paragraph("ВОДИТЕЛЬ", styleInfoLabel),
         Paragraph(f"{driver}", styleInfoValue),
         Paragraph("ПЛОМБА", styleInfoLabel),
-        # Значение пломбы теперь занимает объединённую (SPAN) ширину трёх
-        # последних колонок — ложится горизонтально, а не переносится
-        # вертикально по строкам.
+        # Значение пломбы растянуто через SPAN на оставшиеся колонки —
+        # ложится горизонтально, а не переносится вертикально по строкам.
         Paragraph(f"{plomb}", styleInfoValue),
         Paragraph("", styleInfoLabel),
         Paragraph("", styleInfoValue)
     ]
 
+    info_col_widths = [34 * mm, 58 * mm, 36 * mm, 58 * mm, 48 * mm, 24 * mm]  # сумма = 258... см. ниже
+    # корректируем последнюю колонку так, чтобы сумма точно равнялась CONTENT_WIDTH
+    diff = CONTENT_WIDTH - sum(info_col_widths)
+    info_col_widths[-1] = info_col_widths[-1] + diff
+
     info_table = Table(
         [info_row1, info_row2],
-        colWidths=[32 * mm, 55 * mm, 35 * mm, 55 * mm, 45 * mm, 22 * mm]
+        colWidths=info_col_widths
     )
     info_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('BACKGROUND', (0, 0), (-1, -1), PDF_ACCENT_LIGHT),
-        ('LEFTPADDING', (0, 0), (-1, -1), 10),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 10),
-        ('TOPPADDING', (0, 0), (-1, -1), 8),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('LEFTPADDING', (0, 0), (-1, -1), 9),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 9),
+        ('TOPPADDING', (0, 0), (-1, -1), 7),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
         ('LINEBELOW', (0, 0), (-1, 0), 0.6, PDF_BORDER),
-        # Растягиваем ячейку значения ПЛОМБЫ (col 3) через оставшиеся
-        # пустые колонки (4,5) во второй строке — даёт ей ~122мм вместо 55мм.
         ('SPAN', (3, 1), (5, 1)),
     ]))
     elements.append(info_table)
     elements.append(Spacer(1, 4))
-    elements.append(HRFlowable(width="100%", thickness=1.5, color=PDF_ACCENT))
-    elements.append(Spacer(1, 12))
+    elements.append(HRFlowable(width="100%", thickness=1.3, color=PDF_ACCENT))
+    elements.append(Spacer(1, 10))
 
     # ===== ТАБЛИЦА С ЗАКАЗАМИ =====
     headers = [
@@ -528,12 +554,20 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
     table_data = [[Paragraph(h, styleHeader) for h in headers]]
 
     for _, row in all_data.iterrows():
-        order_num = f"{row.get('№ заказа', '')}"
+        order_num_full = str(row.get('№ заказа', ''))
+        # Последние 4 символа номера заказа выделяем жирным — это то,
+        # что чаще всего отличает заказы друг от друга на листе, легче
+        # находить взглядом.
+        if len(order_num_full) > 4:
+            order_num_html = f"{order_num_full[:-4]}<b>{order_num_full[-4:]}</b>"
+        else:
+            order_num_html = f"<b>{order_num_full}</b>"
+
         shop_name = str(row.get("Название магазина", ""))[:50]
         address = str(row.get("Адрес магазина", ""))[:70]
 
         table_data.append([
-            Paragraph(order_num, styleBold),
+            Paragraph(order_num_html, styleOrderNum),
             Paragraph(shop_name, styleCell),
             Paragraph(address, styleCell),
             Paragraph(" ", styleCell),
@@ -544,48 +578,43 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
             Paragraph(" ", styleCell)
         ])
 
-    # Ширины колонок пересчитаны так, чтобы таблица растягивалась на всю
-    # ширину листа (281мм, как и плашка заголовка), а узким колонкам
-    # (Пломба, Выдано/Получено коробок и т.д.) досталось больше места —
-    # заголовки переносятся аккуратнее, без "лесенки" по одной букве в строке.
+    table_col_widths = [20 * mm, 33 * mm, 57 * mm, 19 * mm, 21 * mm, 21 * mm, 23 * mm, 44 * mm, 28 * mm]
+    diff_t = CONTENT_WIDTH - sum(table_col_widths)
+    table_col_widths[2] = table_col_widths[2] + diff_t  # добавляем/убираем разницу в "Адрес"
+
     table = Table(
         table_data,
-        colWidths=[22 * mm, 35 * mm, 60 * mm, 20 * mm, 22 * mm, 22 * mm, 25 * mm, 45 * mm, 30 * mm],
+        colWidths=table_col_widths,
         repeatRows=1
     )
 
     table.setStyle(TableStyle([
-        # Заголовок — светло-серый фон (под ч/б печать), тёмный текст
         ('BACKGROUND', (0, 0), (-1, 0), PDF_ACCENT),
         ('TEXTCOLOR', (0, 0), (-1, 0), PDF_TEXT),
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
         ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
-        # Чередование строк
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, PDF_ROW_ALT]),
         ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
-        # Границы — мягкие, светло-серые
         ('GRID', (0, 0), (-1, -1), 0.6, PDF_BORDER),
         ('BOX', (0, 0), (-1, -1), 1, PDF_ACCENT),
-        # Отступы
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ('LEFTPADDING', (0, 0), (-1, -1), 5),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
-        # Выравнивание
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
         ('ALIGN', (0, 1), (0, -1), 'CENTER'),
         ('ALIGN', (1, 1), (2, -1), 'LEFT'),
         ('ALIGN', (3, 1), (-1, -1), 'CENTER'),
     ]))
 
     elements.append(table)
-    elements.append(Spacer(1, 22))
+    elements.append(Spacer(1, 18))
 
     # ===== ПОДПИСИ =====
     sig_data = [
         [Paragraph("Подпись водителя: _________________________", styleSignature),
          Paragraph("Подпись ответственного: _________________________", styleSignature)]
     ]
-    sig_table = Table(sig_data, colWidths=[135 * mm, 135 * mm])
+    sig_table = Table(sig_data, colWidths=[CONTENT_WIDTH / 2, CONTENT_WIDTH / 2])
     sig_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('ALIGN', (0, 0), (0, 0), 'LEFT'),
