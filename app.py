@@ -452,9 +452,10 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
         'CustomOrderNum',
         parent=styles['Normal'],
         fontName=FONT_REGULAR,
-        fontSize=9.5,
-        leading=12,
-        textColor=PDF_TEXT
+        fontSize=9,
+        leading=15,
+        textColor=PDF_TEXT,
+        wordWrap=None,
     )
 
     styleHeader = ParagraphStyle(
@@ -555,13 +556,17 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
 
     for _, row in all_data.iterrows():
         order_num_full = str(row.get('№ заказа', ''))
-        # Последние 4 символа номера заказа выделяем жирным — это то,
-        # что чаще всего отличает заказы друг от друга на листе, легче
-        # находить взглядом.
+        # Номер заказа выводится в ОДНУ строку целиком (не переносится
+        # пополам вниз). Последние 4 символа — то, что чаще всего
+        # отличает заказы друг от друга, — крупнее и жирнее остальной
+        # части номера, но в пределах той же строки/ячейки.
         if len(order_num_full) > 4:
-            order_num_html = f"{order_num_full[:-4]}<b>{order_num_full[-4:]}</b>"
+            order_num_html = (
+                f'<font face="{FONT_REGULAR}" size="8.5">{order_num_full[:-4]}</font>'
+                f'<font face="{FONT_BOLD}" size="11.5">{order_num_full[-4:]}</font>'
+            )
         else:
-            order_num_html = f"<b>{order_num_full}</b>"
+            order_num_html = f'<font face="{FONT_BOLD}" size="11.5">{order_num_full}</font>'
 
         shop_name = str(row.get("Название магазина", ""))[:50]
         address = str(row.get("Адрес магазина", ""))[:70]
@@ -578,7 +583,7 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
             Paragraph(" ", styleCell)
         ])
 
-    table_col_widths = [20 * mm, 33 * mm, 57 * mm, 19 * mm, 21 * mm, 21 * mm, 23 * mm, 44 * mm, 28 * mm]
+    table_col_widths = [27 * mm, 33 * mm, 50 * mm, 19 * mm, 21 * mm, 21 * mm, 23 * mm, 44 * mm, 28 * mm]
     diff_t = CONTENT_WIDTH - sum(table_col_widths)
     table_col_widths[2] = table_col_widths[2] + diff_t  # добавляем/убираем разницу в "Адрес"
 
@@ -601,6 +606,8 @@ def generate_delivery_pdf(all_data, routes_list, driver, car, plomb, trip_number
         ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
         ('LEFTPADDING', (0, 0), (-1, -1), 4),
         ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ('LEFTPADDING', (0, 1), (0, -1), 2),
+        ('RIGHTPADDING', (0, 1), (0, -1), 2),
         ('ALIGN', (0, 1), (0, -1), 'CENTER'),
         ('ALIGN', (1, 1), (2, -1), 'LEFT'),
         ('ALIGN', (3, 1), (-1, -1), 'CENTER'),
