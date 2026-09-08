@@ -1,3 +1,5 @@
-git add packages.txt
-git commit -m "fix packages"
-git push
+fonts-dejavu
+fonts-dejavu-core
+fonts-dejavu-extra
+libgl1
+libglib2.0-0
