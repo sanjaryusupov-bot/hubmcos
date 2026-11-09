@@ -662,10 +662,14 @@ col2.metric("Отгружено", shipped["Номер маршрута"].nunique
 col3.metric("Точек", len(not_shipped))
 col4.metric(
     "Кол-во шт",
-    int(not_shipped["кол-во штук в заказе"].sum())
+    int(
+        pd.to_numeric(
+            not_shipped["кол-во штук в заказе"],
+            errors="coerce"
+        ).fillna(0).sum()
+    )
     if "кол-во штук в заказе" in not_shipped.columns and not not_shipped.empty else 0
 )
-
 st.divider()
 
 # ==================== СВОДНОЕ ОКНО СВЕРХУ ====================
