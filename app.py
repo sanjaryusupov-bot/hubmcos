@@ -673,20 +673,28 @@ col4.metric(
 st.divider()
 
 # ==================== СВОДНОЕ ОКНО СВЕРХУ ====================
-if not not_shipped.empty and "Название магазина" in not_shipped.columns and "Адрес магазина" in not_shipped.columns:
-    with st.expander("Сводная информация по магазинам (без группировки по заказам)", expanded=False):
-        st.markdown("### Сводка по магазинам и адресам")
-
         agg_dict = {"№ заказа": "count"}
+
         if "кол-во штук в заказе" in not_shipped.columns:
+            not_shipped["кол-во штук в заказе"] = pd.to_numeric(
+                not_shipped["кол-во штук в заказе"],
+                errors="coerce"
+            ).fillna(0)
+
             agg_dict["кол-во штук в заказе"] = "sum"
-if "кол-во штук в заказе" in not_shipped.columns:
-    not_shipped["кол-во штук в заказе"] = pd.to_numeric(
-        not_shipped["кол-во штук в заказе"],
-        errors="coerce"
-    ).fillna(0)
-        summary_by_shop = not_shipped.groupby(["Название магазина", "Адрес магазина"]).agg(agg_dict)
+
+        summary_by_shop = not_shipped.groupby(
+            ["Название магазина", "Адрес магазина"]
+        ).agg(agg_dict)
+
         rename_map = {"№ заказа": "Кол-во заказов"}
+
+        if "кол-во штук в заказе" in agg_dict:
+            rename_map["кол-во штук в заказе"] = "Всего штук"
+
+        summary_by_shop = summary_by_shop.rename(
+            columns=rename_map
+        ).reset_index()
         if "кол-во штук в заказе" in agg_dict:
             rename_map["кол-во штук в заказе"] = "Всего штук"
         summary_by_shop = summary_by_shop.rename(columns=rename_map).reset_index()
