@@ -680,7 +680,11 @@ if not not_shipped.empty and "Название магазина" in not_shipped.
         agg_dict = {"№ заказа": "count"}
         if "кол-во штук в заказе" in not_shipped.columns:
             agg_dict["кол-во штук в заказе"] = "sum"
-
+if "кол-во штук в заказе" in not_shipped.columns:
+    not_shipped["кол-во штук в заказе"] = pd.to_numeric(
+        not_shipped["кол-во штук в заказе"],
+        errors="coerce"
+    ).fillna(0)
         summary_by_shop = not_shipped.groupby(["Название магазина", "Адрес магазина"]).agg(agg_dict)
         rename_map = {"№ заказа": "Кол-во заказов"}
         if "кол-во штук в заказе" in agg_dict:
@@ -793,7 +797,10 @@ elif not st.session_state.get('shipment_completed', False):
         )
 
         total_orders = len(details)
-        total_quantity = details["кол-во штук в заказе"].sum() if "кол-во штук в заказе" in details.columns else 0
+        total_quantity = pd.to_numeric(
+    details["кол-во штук в заказе"],
+    errors="coerce"
+).fillna(0).sum() if "кол-во штук в заказе" in details.columns else 0
         st.info(f"Итого: {total_orders} заказов, {int(total_quantity)} штук")
 
     if st.button("ОТГРУЗИТЬ", type="primary"):
