@@ -673,14 +673,23 @@ col4.metric(
 st.divider()
 
 # ==================== СВОДНОЕ ОКНО СВЕРХУ ====================
+
+if not not_shipped.empty and "Название магазина" in not_shipped.columns and "Адрес магазина" in not_shipped.columns:
+
+    if "кол-во штук в заказе" in not_shipped.columns:
+        not_shipped = not_shipped.copy()
+        not_shipped["кол-во штук в заказе"] = pd.to_numeric(
+            not_shipped["кол-во штук в заказе"],
+            errors="coerce"
+        ).fillna(0)
+
+    with st.expander("Сводная информация по магазинам (без группировки по заказам)", expanded=False):
+
+        st.markdown("### Сводка по магазинам и адресам")
+
         agg_dict = {"№ заказа": "count"}
 
         if "кол-во штук в заказе" in not_shipped.columns:
-            not_shipped["кол-во штук в заказе"] = pd.to_numeric(
-                not_shipped["кол-во штук в заказе"],
-                errors="coerce"
-            ).fillna(0)
-
             agg_dict["кол-во штук в заказе"] = "sum"
 
         summary_by_shop = not_shipped.groupby(
@@ -695,15 +704,10 @@ st.divider()
         summary_by_shop = summary_by_shop.rename(
             columns=rename_map
         ).reset_index()
-        if "кол-во штук в заказе" in agg_dict:
-            rename_map["кол-во штук в заказе"] = "Всего штук"
-        summary_by_shop = summary_by_shop.rename(columns=rename_map).reset_index()
 
         sort_col = "Всего штук" if "Всего штук" in summary_by_shop.columns else "Кол-во заказов"
         summary_by_shop = summary_by_shop.sort_values(sort_col, ascending=False)
 
-        # Пересобираем через обычные python-типы — защита от краша st.dataframe
-        # на несовместимых arrow-backed dtypes (известная проблема pandas 3.x).
         summary_by_shop_display = pd.DataFrame(summary_by_shop.to_dict('records'))
 
         st.dataframe(
@@ -716,25 +720,31 @@ st.divider()
         total_orders_all = summary_by_shop["Кол-во заказов"].sum()
 
         col_a, col_b, col_c = st.columns(3)
+
         col_a.metric("Уникальных магазинов", total_shops)
+
         if "Всего штук" in summary_by_shop.columns:
             col_b.metric("Всего штук", int(summary_by_shop["Всего штук"].sum()))
+
         col_c.metric("Всего заказов", int(total_orders_all))
 
         st.markdown("---")
 
         st.markdown("### Детальный список по магазинам")
+
         for idx, row in summary_by_shop.iterrows():
+
             with st.container():
+
                 qty_txt = f"{int(row['Всего штук'])} шт. | " if "Всего штук" in summary_by_shop.columns else ""
+
                 st.markdown(f"""
                 **{row['Название магазина']}**  
                 *{row['Адрес магазина']}*  
                 {qty_txt}{int(row['Кол-во заказов'])} заказ(ов)
                 """)
-                st.divider()
 
-st.divider()
+                st.divider()
 
 # ==================== ОСНОВНОЙ ИНТЕРФЕЙС ====================
 if st.button("Откатить маршруты", type="secondary"):
